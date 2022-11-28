@@ -1,0 +1,9 @@
+all:
+	@go build -ldflags "-X main.buildTime=`date -u +%Y-%m-%dT%H:%M:%SZ` -X main.gitRevision=`git rev-parse HEAD`" .
+
+install:
+	@go install -ldflags "-X main.buildTime=`date -u +%Y-%m-%dT%H:%M:%SZ` -X main.gitRevision=`git rev-parse HEAD`" ./...
+
+test:
+	@go get ./...
+	@go test ./...

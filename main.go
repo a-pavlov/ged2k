@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/a-pavlov/proto"
+	"github.com/a-pavlov/ged2k/proto"
 )
 
 func main() {
