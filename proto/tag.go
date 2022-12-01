@@ -1,7 +1,10 @@
 package proto
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"reflect"
 )
 
 const TAGTYPE_UNDEFINED byte = 0x00 // special tag definition for empty objects
@@ -386,10 +389,11 @@ type Tag struct {
 	Type  byte
 	Id    byte
 	Name  string
-	Value Serializable
+	value []byte
 }
 
 func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
+
 	sr.read(&t.Type)
 	if sr.err == nil {
 		if (t.Type & 0x80) != 0 {
@@ -405,62 +409,88 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 		}
 	}
 
-	switch byte(t.Type) {
-	case TAGTYPE_UINT8:
-		//var b BYTE
-		//t.Value = &b
-	case TAGTYPE_UINT16:
-		//value = &UINT16{}
-	case TAGTYPE_UINT32:
-		//value = &UINT32{}
-		break
-	case TAGTYPE_UINT64:
-		//value = uint64
-		break
-	case TAGTYPE_FLOAT32:
-		//value = new FloatSerial(0.0f);
-		//break;
-	case TAGTYPE_BOOL:
-		//value = new BooleanSerial(false);
-		break
-	case TAGTYPE_STR1:
-	case TAGTYPE_STR2:
-	case TAGTYPE_STR3:
-	case TAGTYPE_STR4:
-	case TAGTYPE_STR5:
-	case TAGTYPE_STR6:
-	case TAGTYPE_STR7:
-	case TAGTYPE_STR8:
-	case TAGTYPE_STR9:
-	case TAGTYPE_STR10:
-	case TAGTYPE_STR11:
-	case TAGTYPE_STR12:
-	case TAGTYPE_STR13:
-	case TAGTYPE_STR14:
-	case TAGTYPE_STR15:
-	case TAGTYPE_STR16:
-	case TAGTYPE_STRING:
-		//value = new StringSerial(type, null);
-		break
-	case TAGTYPE_BLOB:
-		//value = ByteContainer32{};
-		break
-	case TAGTYPE_BSOB:
-		//value = new ByteContainer<UInt8>(uint8());
-		break
-	case TAGTYPE_BOOLARRAY:
-		//value = new BoolArraySerial();
-		break
-	case TAGTYPE_HASH16:
-		//value = new Hash();
-		break
+	var bc uint32 = 0
+	switch {
+	case t.Type == TAGTYPE_UINT8:
+		bc = 1
+	case t.Type == TAGTYPE_UINT16:
+		bc = 2
+	case t.Type == TAGTYPE_UINT32:
+		bc = 4
+	case t.Type == TAGTYPE_UINT64:
+		bc = 8
+	case t.Type == TAGTYPE_FLOAT32:
+		bc = 8
+	case t.Type == TAGTYPE_BOOL:
+		bc = 1
+	case t.Type >= TAGTYPE_STR1 && t.Type <= TAGTYPE_STR16:
+		bc = uint32(t.Type - TAGTYPE_STR1 + 1)
+	case t.Type == TAGTYPE_STRING:
+		var v uint16
+		sr.read(&v)
+		bc = uint32(v)
+	case t.Type == TAGTYPE_BLOB:
+		var v uint32
+		sr.read(&v)
+		bc = v
+	case t.Type == TAGTYPE_BSOB:
+		var v byte
+		sr.read(&v)
+		bc = uint32(v)
+	case t.Type == TAGTYPE_BOOLARRAY:
+		var v uint16
+		sr.read(&v)
+		bc = uint32(v)
+	case t.Type == TAGTYPE_HASH16:
+		bc = 16
 	default:
+		fmt.Println("Error")
+	}
 
+	if sr.err == nil && bc > 0 && bc < 100000 {
+		t.value = make([]byte, bc)
+		sr.read(t.value)
 	}
 
 	return sr
 }
 
 func (t *Tag) Put(sw *StateBuffer) *StateBuffer {
+	if t.Name == "" {
+		sw.write((byte)(t.Type | 0x80)).write(t.Id)
+	} else {
+		bc := ByteContainer16(t.Name)
+		bc.Put(sw.write(t.Type))
+	}
 	return sw.write(t.Type).write(t.Id)
+}
+
+func (t Tag) IsInt16() bool {
+	return t.Type == TAGTYPE_UINT16
+}
+
+func (t Tag) AsUint16() uint16 {
+	return binary.LittleEndian.Uint16(t.value)
+}
+
+func (t Tag) IsUint32() bool {
+	return t.Type == TAGTYPE_UINT32
+}
+
+func (t Tag) AsUint32() uint32 {
+	return binary.BigEndian.Uint32(t.value)
+}
+
+func CreateTag(data interface{}, id byte) (Tag, error) {
+	switch data := data.(type) {
+	case byte:
+		return Tag{Type: TAGTYPE_UINT8, Id: id, value: []byte{byte(data)}}, nil
+	case uint16:
+		return Tag{Type: TAGTYPE_UINT16, Id: id, value: []byte{byte(data & 0xFF), byte(uint16(data) >> 8)}}, nil
+	case uint32:
+		return Tag{Type: TAGTYPE_UINT32, Id: id, value: []byte{byte(data & 0xFF), byte((uint32(data) >> 8) & 0xFF), byte((uint32(data) >> 16) & 0xFF), byte((uint32(data) >> 24) & 0xFF)}}, nil
+	default:
+		return Tag{}, errors.New("No tag for type " + reflect.TypeOf(data).String())
+	}
+
 }

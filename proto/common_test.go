@@ -2,6 +2,7 @@ package proto
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 func Test_trivial(t *testing.T) {
 	buf := []byte{0x01, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04}
 	var data uint16
-	rd := StateBuffer{data: buf, err: nil}
+	rd := StateBuffer{Data: buf, err: nil}
 	rd.read(&data)
 	if rd.err != nil {
 		t.Errorf("Failed to get uint16: %v", rd.err)
@@ -22,7 +23,7 @@ func Test_trivial(t *testing.T) {
 	}
 
 	out_buf := make([]byte, 4)
-	w := StateBuffer{data: out_buf}
+	w := StateBuffer{Data: out_buf}
 	s := Some{Ip: 1, Port: 2}
 	s.Put(&w)
 	if w.Error() != nil {
@@ -55,14 +56,14 @@ func Test_hash(t *testing.T) {
 	}
 
 	buf := make([]byte, 32)
-	sw := StateBuffer{data: buf}
+	sw := StateBuffer{Data: buf}
 	term.Put(ed2k.Put(&sw))
 	if sw.err != nil {
 		t.Errorf("Hash serialize error %v", sw.err)
 	}
 
 	var h4, h5 Hash
-	sr := StateBuffer{data: buf}
+	sr := StateBuffer{Data: buf}
 	h4.Get(h5.Get(&sr))
 
 	if sr.err != nil {
@@ -81,7 +82,7 @@ func Test_hash(t *testing.T) {
 func Test_byteContainer(t *testing.T) {
 	buf := make([]byte, 5)
 	bc := ByteContainer16{0x01, 0x02, 0x03}
-	sw := StateBuffer{data: buf}
+	sw := StateBuffer{Data: buf}
 	bc.Put(&sw)
 	if sw.err != nil {
 		t.Errorf("Byte container write failed %v", sw.err)
@@ -92,7 +93,7 @@ func Test_byteContainer(t *testing.T) {
 	}
 
 	bc2 := ByteContainer16{}
-	sr := StateBuffer{data: buf}
+	sr := StateBuffer{Data: buf}
 	bc2.Get(&sr)
 	if sr.err != nil {
 		t.Errorf("Byte container read failed %v", sr.err)
@@ -108,14 +109,14 @@ func Test_byteContainer(t *testing.T) {
 
 	buf2 := make([]byte, 7)
 	bc3 := ByteContainer32{0x04, 0x05, 0x06}
-	sw2 := StateBuffer{data: buf2}
+	sw2 := StateBuffer{Data: buf2}
 	bc3.Put(&sw2)
 	if sw2.err != nil {
 		t.Errorf("Byte container 32 failed to write %v", sw2.err)
 	}
 
 	bc4 := ByteContainer32{}
-	sr2 := StateBuffer{data: buf2}
+	sr2 := StateBuffer{Data: buf2}
 	bc4.Get(&sr2)
 
 	if sr2.err != nil {
@@ -124,6 +125,65 @@ func Test_byteContainer(t *testing.T) {
 
 	if !bytes.Equal(bc4, []byte{0x04, 0x05, 0x06}) {
 		t.Errorf("Byte container read wrong data %x", bc4)
+	}
+
+	x := "12345"
+	bcStr := ByteContainer16(x)
+	buf3 := make([]byte, 7)
+	bcStr.Put(&StateBuffer{Data: buf3})
+	if !bytes.Equal(buf3, []byte{0x05, 0x00, 0x31, 0x32, 0x33, 0x34, 0x35}) {
+		t.Errorf("String serialize to as bytec 16 failed %x", buf3)
+	}
+
+	var bcStr2 ByteContainer16
+	bcStr2.Get(&StateBuffer{Data: buf3})
+	if string(bcStr2) != "12345" {
+		t.Errorf("String restore from BC16 failed %s", string(bcStr2))
+	}
+}
+
+func Test_tag(t *testing.T) {
+	tag1 := Tag{}
+	buf := []byte{TAGTYPE_UINT16 | 0x80, 0x11, 0x0A, 0x00}
+	sb := StateBuffer{Data: buf}
+	tag1.Get(&sb)
+	if sb.err != nil {
+		t.Errorf("Tag read fail %x", sb.err)
+	}
+
+	if tag1.AsUint16() != 0x0A {
+		t.Errorf("Tag value as uint16 vrong value %d", tag1.AsUint16())
+	}
+
+	{
+		var v2 uint16 = 1024
+		tag2, err := CreateTag(v2, FT_FILESIZE)
+		if err != nil {
+			t.Errorf("Create tag U16 failed %v", err)
+		}
+		buf_exp := []byte{TAGTYPE_UINT16 | 0x80, FT_FILESIZE, 0x00, 0x00}
+		binary.LittleEndian.PutUint16(buf_exp[2:], 1024)
+
+		tag2.Put(&StateBuffer{Data: buf})
+		if bytes.Equal(buf, buf_exp) {
+			t.Errorf("Wrong Tag U16 write result %x expected %x", buf, buf_exp)
+		}
+	}
+
+	{
+		buf_exp := []byte{TAGTYPE_UINT16 | 0x80, FT_FILESIZE, 0x00, 0x00, 0x00, 0x00}
+		binary.LittleEndian.PutUint32(buf_exp[2:], 0xABABABAB)
+
+		var v2 uint32 = 0xABABABAB
+		tag2, err := CreateTag(v2, FT_FILESIZE)
+		if err != nil {
+			t.Errorf("Create tag U32 failed %v", err)
+		}
+
+		tag2.Put(&StateBuffer{Data: buf})
+		if bytes.Equal(buf, buf_exp) {
+			t.Errorf("Wrong Tag U32 write result %x expected %x", buf, buf_exp)
+		}
 	}
 
 }

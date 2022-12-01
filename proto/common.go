@@ -20,7 +20,7 @@ type SerializableNumber interface {
 }
 
 type StateBuffer struct {
-	data []byte
+	Data []byte
 	err  error
 	pos  int
 }
@@ -40,12 +40,12 @@ func (sb *StateBuffer) read(data interface{}) *StateBuffer {
 
 	// Fast path for basic types and slices.
 	if n := intDataSize(data); n != 0 {
-		if n+sb.pos > len(sb.data) {
+		if n+sb.pos > len(sb.Data) {
 			sb.err = io.EOF
 			return sb
 		}
 
-		bs := sb.data[sb.pos : sb.pos+n]
+		bs := sb.Data[sb.pos : sb.pos+n]
 
 		switch data := data.(type) {
 		case *bool:
@@ -221,45 +221,45 @@ func (sb *StateBuffer) write(data interface{}) *StateBuffer {
 	}
 
 	n := intDataSize(data)
-	if sb.pos+n > len(sb.data) {
+	if sb.pos+n > len(sb.Data) {
 		sb.err = io.EOF
 		return sb
 	}
 
 	switch v := data.(type) {
 	case int8:
-		sb.data[0] = byte(v)
+		sb.Data[0] = byte(v)
 	case uint16:
-		binary.LittleEndian.PutUint16(sb.data, v)
+		binary.LittleEndian.PutUint16(sb.Data, v)
 	case uint32:
-		binary.LittleEndian.PutUint32(sb.data, v)
+		binary.LittleEndian.PutUint32(sb.Data, v)
 	case *[]byte:
 		for i, x := range *v {
-			sb.data[sb.pos+i] = byte(x)
+			sb.Data[sb.pos+i] = byte(x)
 		}
 	case []byte:
 		for i, x := range v {
-			sb.data[sb.pos+i] = byte(x)
+			sb.Data[sb.pos+i] = byte(x)
 		}
 	case *Hash:
 		for i, x := range v {
-			sb.data[sb.pos+i] = byte(x)
+			sb.Data[sb.pos+i] = byte(x)
 		}
 	case ByteContainer32:
 		for i, x := range v {
-			sb.data[sb.pos+i] = byte(x)
+			sb.Data[sb.pos+i] = byte(x)
 		}
 	case *ByteContainer32:
 		for i, x := range *v {
-			sb.data[sb.pos+i] = byte(x)
+			sb.Data[sb.pos+i] = byte(x)
 		}
 	case ByteContainer16:
 		for i, x := range v {
-			sb.data[sb.pos+i] = byte(x)
+			sb.Data[sb.pos+i] = byte(x)
 		}
 	case *ByteContainer16:
 		for i, x := range *v {
-			sb.data[sb.pos+i] = byte(x)
+			sb.Data[sb.pos+i] = byte(x)
 		}
 	default:
 		sb.err = errors.New("SB.write: invalid type " + reflect.TypeOf(data).String())
