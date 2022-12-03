@@ -324,6 +324,18 @@ func Test_tagCollection(t *testing.T) {
 	if !bytes.Equal(c[8].(*Tag).AsHash(), []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F}) {
 		t.Errorf("Index 8 value is not correct %x", c[8].(*Tag).AsHash())
 	}
+
+	buf_recv := make([]byte, len(buf))
+	sb_recv := StateBuffer{Data: buf_recv}
+	sb_recv.Write(sz).Write(c)
+
+	if sb_recv.err != nil {
+		t.Errorf("Can not serialize tag collection back %v", sb_recv.err)
+	}
+
+	if bytes.Equal(buf, buf_recv) {
+		t.Errorf("Wrong content %x expected %x", buf_recv, buf)
+	}
 }
 
 func Test_usualPkg(t *testing.T) {

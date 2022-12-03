@@ -549,5 +549,4 @@ func CreateTag(data interface{}, id byte) (Tag, error) {
 	default:
 		return Tag{}, errors.New("No tag for type " + reflect.TypeOf(data).String())
 	}
-
 }

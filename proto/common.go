@@ -8,6 +8,8 @@ import (
 	"reflect"
 )
 
+const MAX_ELEMS uint32 = 1000
+
 type Serializable interface {
 	Get(sr *StateBuffer) *StateBuffer
 	Put(sr *StateBuffer) *StateBuffer
@@ -194,7 +196,7 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 	}
 
 	switch v := data.(type) {
-	case int8:
+	case uint8:
 		sb.Data[0] = byte(v)
 	case uint16:
 		binary.LittleEndian.PutUint16(sb.Data[sb.pos:], v)
@@ -310,10 +312,13 @@ func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
 	sb.Read(&up.H).Read(&up.Point)
 	var sz uint32
 	sb.Read(&sz)
-	for i := 0; i < int(sz); i++ {
-		up.Properties = append(up.Properties, &Tag{})
+	if sb.err == nil && sz < MAX_ELEMS {
+		for i := 0; i < int(sz); i++ {
+			up.Properties = append(up.Properties, &Tag{})
+		}
+		sb.Read(&up.Properties)
 	}
-	return sb.Read(&up.Properties)
+	return sb
 }
 
 func (up UsualPacket) Put(sb *StateBuffer) *StateBuffer {
