@@ -410,7 +410,6 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 				} else {
 					t.Name = string(bc)
 				}
-
 			}
 		}
 	}
@@ -426,7 +425,7 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 	case t.Type == TAGTYPE_UINT64:
 		bc = 8
 	case t.Type == TAGTYPE_FLOAT32:
-		bc = 8
+		bc = 4
 	case t.Type == TAGTYPE_BOOL:
 		bc = 1
 	case t.Type >= TAGTYPE_STR1 && t.Type <= TAGTYPE_STR16:
@@ -471,7 +470,19 @@ func (t *Tag) Put(sw *StateBuffer) *StateBuffer {
 	return sw.Write(t.Type).Write(t.Id)
 }
 
-func (t Tag) IsInt16() bool {
+func (t Tag) GetName() string {
+	return t.Name
+}
+
+func (t Tag) IsByte() bool {
+	return t.Type == TAGTYPE_UINT8
+}
+
+func (t Tag) AsByte() byte {
+	return t.value[0]
+}
+
+func (t Tag) IsUint16() bool {
 	return t.Type == TAGTYPE_UINT16
 }
 
@@ -485,6 +496,46 @@ func (t Tag) IsUint32() bool {
 
 func (t Tag) AsUint32() uint32 {
 	return binary.BigEndian.Uint32(t.value)
+}
+
+func (t Tag) IsUint64() bool {
+	return t.Type == TAGTYPE_UINT64
+}
+
+func (t Tag) AsUint64() uint64 {
+	return binary.LittleEndian.Uint64(t.value)
+}
+
+func (t Tag) IsString() bool {
+	return (t.Type >= TAGTYPE_STR1 && t.Type <= TAGTYPE_STR16) || t.Type == TAGTYPE_STRING
+}
+
+func (t Tag) AsString() string {
+	return string(t.value)
+}
+
+func (t Tag) IsBool() bool {
+	return t.Type == TAGTYPE_BOOL
+}
+
+func (t Tag) AsBool() bool {
+	return t.value[0] != 0x00
+}
+
+func (t Tag) IsBlob() bool {
+	return t.Type == TAGTYPE_BLOB
+}
+
+func (t Tag) AsBlob() []byte {
+	return t.value
+}
+
+func (t Tag) IsHash() bool {
+	return t.Type == TAGTYPE_HASH16
+}
+
+func (t Tag) AsHash() []byte {
+	return t.value
 }
 
 func CreateTag(data interface{}, id byte) (Tag, error) {

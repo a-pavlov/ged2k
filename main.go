@@ -24,6 +24,7 @@ func main() {
 	sb2 := proto.StateBuffer{Data: data}
 	var s uint32
 	sb2.Read(&s)
+
 	sb2.Read(&x)
 	if sb2.Error() != nil {
 		fmt.Println("Read error", sb2.Error())
@@ -31,4 +32,11 @@ func main() {
 
 	test := x[0].(*proto.Endpoint)
 	fmt.Println("TEST IP", test.Ip, "PORT", test.Port)
+	tag_64 := []byte{proto.TAGTYPE_UINT64, 0x04, 0x00, 0x30, 0x31, 0x32, 0x33, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	t := proto.Tag{}
+	sb3 := proto.StateBuffer{Data: tag_64}
+	t.Get(&sb3)
+	if t.IsUint64() {
+		fmt.Println("Tag 64", t.AsUint64(), t.Name)
+	}
 }

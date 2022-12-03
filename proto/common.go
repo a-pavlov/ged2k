@@ -124,27 +124,6 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 	}
 
 	return sb
-
-	// Fallback to reflect-based decoding.
-	/*
-		v := reflect.ValueOf(data)
-		size := -1
-		switch v.Kind() {
-		case reflect.Ptr:
-			v = v.Elem()
-			size = dataSize(v)
-		case reflect.Slice:
-			size = dataSize(v)
-		}
-		if size < 0 {
-			return errors.New("binary.Read: invalid type " + reflect.TypeOf(data).String())
-		}
-		d := &decoder{order: order, buf: make([]byte, size)}
-		if _, err := io.ReadFull(r, d.buf); err != nil {
-			return err
-		}
-		d.value(v)
-		return nil*/
 }
 
 // intDataSize returns the size of the data required to represent the data when encoded.
@@ -303,6 +282,24 @@ func GetContainer(data []Serializable, sb *StateBuffer) {
 	}
 }
 
+type Collection []Serializable
+
+func (c *Collection) Get(sb *StateBuffer) *StateBuffer {
+	for i := 0; i < len(*c); i++ {
+		(*c)[i].Get(sb)
+	}
+
+	return sb
+}
+
+func (c Collection) Put(sb *StateBuffer) *StateBuffer {
+	for i := 0; i < len(c); i++ {
+		c[i].Put(sb)
+	}
+
+	return sb
+}
+
 type UsualPacket struct {
 	H          Hash
 	Point      Endpoint
@@ -322,22 +319,4 @@ func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
 func (up UsualPacket) Put(sb *StateBuffer) *StateBuffer {
 	sb.Write(up.H).Write(up.Point)
 	return sb.Write(uint32(len(up.Properties))).Write(up.Properties)
-}
-
-type Collection []Serializable
-
-func (c *Collection) Get(sb *StateBuffer) *StateBuffer {
-	for i := 0; i < len(*c); i++ {
-		(*c)[i].Get(sb)
-	}
-
-	return sb
-}
-
-func (c Collection) Put(sb *StateBuffer) *StateBuffer {
-	for i := 0; i < len(c); i++ {
-		c[i].Put(sb)
-	}
-
-	return sb
 }
