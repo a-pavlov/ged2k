@@ -202,7 +202,7 @@ const TAG_SOURCEPORT byte = 0xFD     // <uint16>
 const TAG_SOURCEIP byte = 0xFE       // <uint32>
 const TAG_SOURCETYPE byte = 0xFF     // <uint8>
 
-func type2String(id byte) string {
+func TagType2String(id byte) string {
 	switch id {
 	case TAGTYPE_UNDEFINED:
 		return "TAGTYPE_UNDEFINED"
@@ -278,7 +278,7 @@ func type2String(id byte) string {
 	}
 }
 
-func id2String(id byte) string {
+func TagId2String(id byte) string {
 	switch id {
 	case FT_UNDEFINED:
 		return "FT_UNDEFINED"
@@ -394,17 +394,23 @@ type Tag struct {
 
 func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 
-	sr.read(&t.Type)
+	sr.Read(&t.Type)
 	if sr.err == nil {
 		if (t.Type & 0x80) != 0 {
 			t.Type &= 0x7f
-			sr.read(&t.Id)
+			sr.Read(&t.Id)
 		} else {
-			bc := ByteContainer16{}
-			bc.Get(sr)
-			if len(bc) == 1 {
-				t.Id = bc[0]
-				t.Name = string(bc)
+			var l uint16
+			sr.Read(&l)
+			if sr.err == nil && int(l) < 100500 {
+				bc := make([]byte, l)
+				sr.Read(bc)
+				if l == 1 {
+					t.Id = bc[0]
+				} else {
+					t.Name = string(bc)
+				}
+
 			}
 		}
 	}
@@ -427,19 +433,19 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 		bc = uint32(t.Type - TAGTYPE_STR1 + 1)
 	case t.Type == TAGTYPE_STRING:
 		var v uint16
-		sr.read(&v)
+		sr.Read(&v)
 		bc = uint32(v)
 	case t.Type == TAGTYPE_BLOB:
 		var v uint32
-		sr.read(&v)
+		sr.Read(&v)
 		bc = v
 	case t.Type == TAGTYPE_BSOB:
 		var v byte
-		sr.read(&v)
+		sr.Read(&v)
 		bc = uint32(v)
 	case t.Type == TAGTYPE_BOOLARRAY:
 		var v uint16
-		sr.read(&v)
+		sr.Read(&v)
 		bc = uint32(v)
 	case t.Type == TAGTYPE_HASH16:
 		bc = 16
@@ -449,7 +455,7 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 
 	if sr.err == nil && bc > 0 && bc < 100000 {
 		t.value = make([]byte, bc)
-		sr.read(t.value)
+		sr.Read(t.value)
 	}
 
 	return sr
@@ -457,12 +463,12 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 
 func (t *Tag) Put(sw *StateBuffer) *StateBuffer {
 	if t.Name == "" {
-		sw.write((byte)(t.Type | 0x80)).write(t.Id)
+		sw.Write((byte)(t.Type | 0x80)).Write(t.Id)
 	} else {
-		bc := ByteContainer16(t.Name)
-		bc.Put(sw.write(t.Type))
+		bc := []byte(t.Name)
+		sw.Write(uint16(len(t.Name))).Write(bc).Write(t.Type)
 	}
-	return sw.write(t.Type).write(t.Id)
+	return sw.Write(t.Type).Write(t.Id)
 }
 
 func (t Tag) IsInt16() bool {

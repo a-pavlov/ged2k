@@ -25,21 +25,13 @@ type StateBuffer struct {
 	pos  int
 }
 
-/*func (sr *StateReader) read(data interface{}) *StateReader {
-	if sr.err == nil {
-
-		sr.err = binary.Read(sr.reader, binary.LittleEndian, data)
-	}
-	return sr
-}*/
-
-func (sb *StateBuffer) read(data interface{}) *StateBuffer {
+func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 	if sb.err != nil {
 		return sb
 	}
 
 	// Fast path for basic types and slices.
-	if n := intDataSize(data); n != 0 {
+	if n := intDataSize(data); n >= 0 {
 		if n+sb.pos > len(sb.Data) {
 			sb.err = io.EOF
 			return sb
@@ -73,14 +65,6 @@ func (sb *StateBuffer) read(data interface{}) *StateBuffer {
 		case *Hash:
 			for i, x := range bs {
 				data[i] = x
-			}
-		case *ByteContainer16:
-			for i, x := range bs {
-				([]byte(*data))[i] = x
-			}
-		case *ByteContainer32:
-			for i, x := range bs {
-				([]byte(*data))[i] = x
 			}
 		case []bool:
 			for i, x := range bs { // Easier to loop over the input for 8-bit values.
@@ -124,6 +108,8 @@ func (sb *StateBuffer) read(data interface{}) *StateBuffer {
 			for i := range data {
 				data[i] = math.Float64frombits(binary.LittleEndian.Uint64(bs[8*i:]))
 			}
+		case *Collection:
+			return data.Get(sb)
 		default:
 			n = 0 // fast path doesn't apply
 		}
@@ -203,24 +189,26 @@ func intDataSize(data interface{}) int {
 		return 16
 	case *Hash:
 		return 16
-	case ByteContainer32:
-		return len(data)
-	case *ByteContainer32:
-		return len(*data)
-	case ByteContainer16:
-		return len(data)
-	case *ByteContainer16:
-		return len(*data)
 	}
 	return 0
 }
 
-func (sb *StateBuffer) write(data interface{}) *StateBuffer {
+func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 	if sb.err != nil {
 		return sb
 	}
 
+	// check complex types first
+	switch v := data.(type) {
+	case Endpoint:
+		return v.Put(sb)
+	case Collection:
+		return v.Put(sb)
+	default:
+	}
+
 	n := intDataSize(data)
+
 	if sb.pos+n > len(sb.Data) {
 		sb.err = io.EOF
 		return sb
@@ -230,9 +218,9 @@ func (sb *StateBuffer) write(data interface{}) *StateBuffer {
 	case int8:
 		sb.Data[0] = byte(v)
 	case uint16:
-		binary.LittleEndian.PutUint16(sb.Data, v)
+		binary.LittleEndian.PutUint16(sb.Data[sb.pos:], v)
 	case uint32:
-		binary.LittleEndian.PutUint32(sb.Data, v)
+		binary.LittleEndian.PutUint32(sb.Data[sb.pos:], v)
 	case *[]byte:
 		for i, x := range *v {
 			sb.Data[sb.pos+i] = byte(x)
@@ -241,24 +229,12 @@ func (sb *StateBuffer) write(data interface{}) *StateBuffer {
 		for i, x := range v {
 			sb.Data[sb.pos+i] = byte(x)
 		}
+	case Hash:
+		for i, x := range v {
+			sb.Data[sb.pos+i] = byte(x)
+		}
 	case *Hash:
 		for i, x := range v {
-			sb.Data[sb.pos+i] = byte(x)
-		}
-	case ByteContainer32:
-		for i, x := range v {
-			sb.Data[sb.pos+i] = byte(x)
-		}
-	case *ByteContainer32:
-		for i, x := range *v {
-			sb.Data[sb.pos+i] = byte(x)
-		}
-	case ByteContainer16:
-		for i, x := range v {
-			sb.Data[sb.pos+i] = byte(x)
-		}
-	case *ByteContainer16:
-		for i, x := range *v {
 			sb.Data[sb.pos+i] = byte(x)
 		}
 	default:
@@ -284,11 +260,11 @@ type Some struct {
 }
 
 func (s *Some) Get(sb *StateBuffer) *StateBuffer {
-	return sb.read(s.Ip).read(s.Port)
+	return sb.Read(s.Ip).Read(s.Port)
 }
 
 func (s *Some) Put(sb *StateBuffer) *StateBuffer {
-	return sb.write(s.Ip).write(s.Port)
+	return sb.Write(s.Ip).Write(s.Port)
 }
 
 type Hash [16]byte
@@ -298,68 +274,70 @@ var LIBED2K = [16]byte{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x4C, 0xE9, 0x31, 0xB7, 0x3
 var EMULE = [16]byte{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x0E, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x6F, 0xC0}
 
 func (h *Hash) Get(sb *StateBuffer) *StateBuffer {
-	return sb.read(h)
+	return sb.Read(h)
 }
 
 func (h *Hash) Put(sb *StateBuffer) *StateBuffer {
-	return sb.write(h)
+	return sb.Write(h)
 }
 
-type ByteContainer16 []byte
+type Endpoint struct {
+	Ip   uint32
+	Port uint16
+}
 
-func (bc *ByteContainer16) Get(sb *StateBuffer) *StateBuffer {
-	var size uint16
-	sb.read(&size)
-	if sb.err == nil {
-		*bc = make([]byte, size)
-		sb.read(bc)
+func (i *Endpoint) Get(sb *StateBuffer) *StateBuffer {
+	return sb.Read(&i.Ip).Read(&i.Port)
+}
+
+func (i Endpoint) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(i.Ip).Write(i.Port)
+}
+
+func GetContainer(data []Serializable, sb *StateBuffer) {
+	for _, x := range data {
+		x.Get(sb)
+		if sb.err != nil {
+			break
+		}
+	}
+}
+
+type UsualPacket struct {
+	H          Hash
+	Point      Endpoint
+	Properties Collection
+}
+
+func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
+	sb.Read(&up.H).Read(&up.Point)
+	var sz uint32
+	sb.Read(&sz)
+	for i := 0; i < int(sz); i++ {
+		up.Properties = append(up.Properties, &Tag{})
+	}
+	return sb.Read(&up.Properties)
+}
+
+func (up UsualPacket) Put(sb *StateBuffer) *StateBuffer {
+	sb.Write(up.H).Write(up.Point)
+	return sb.Write(uint32(len(up.Properties))).Write(up.Properties)
+}
+
+type Collection []Serializable
+
+func (c *Collection) Get(sb *StateBuffer) *StateBuffer {
+	for i := 0; i < len(*c); i++ {
+		(*c)[i].Get(sb)
 	}
 
 	return sb
 }
 
-func (bc *ByteContainer16) Put(sb *StateBuffer) *StateBuffer {
-	var size uint16 = uint16(len(*bc))
-	sb.write(size)
-	if sb.err == nil {
-		sb.write(bc)
+func (c Collection) Put(sb *StateBuffer) *StateBuffer {
+	for i := 0; i < len(c); i++ {
+		c[i].Put(sb)
 	}
 
 	return sb
-}
-
-type ByteContainer32 []byte
-
-func (bc *ByteContainer32) Get(sb *StateBuffer) *StateBuffer {
-	var size uint32
-	sb.read(&size)
-	if sb.err == nil {
-		*bc = make([]byte, size)
-		sb.read(bc)
-	}
-
-	return sb
-}
-
-func (bc *ByteContainer32) Put(sb *StateBuffer) *StateBuffer {
-	var size uint32 = uint32(len(*bc))
-	sb.write(size)
-	if sb.err == nil {
-		sb.write(bc)
-	}
-
-	return sb
-}
-
-type IP struct {
-	ip   uint32
-	port uint16
-}
-
-func (i *IP) Get(sb *StateBuffer) *StateBuffer {
-	return sb.read(i.ip).read(i.port)
-}
-
-func (i *IP) Put(sb *StateBuffer) *StateBuffer {
-	return sb.write(i.ip).write(i.port)
 }
