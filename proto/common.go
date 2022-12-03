@@ -27,12 +27,78 @@ type StateBuffer struct {
 	pos  int
 }
 
+func (sb *StateBuffer) ReadUint8() (uint8, error) {
+	if sb.err != nil {
+		return 0x0, sb.err
+	}
+
+	if sb.pos+1 < len(sb.Data) {
+		res := sb.Data[sb.pos]
+		sb.pos++
+		return res, nil
+	}
+
+	return 0x0, io.EOF
+}
+
+func (sb *StateBuffer) ReadUint16() (uint16, error) {
+	if sb.err != nil {
+		return 0x0, sb.err
+	}
+
+	if sb.pos+2 <= len(sb.Data) {
+		res := binary.LittleEndian.Uint16(sb.Data[sb.pos:])
+		sb.pos = sb.pos + 2
+		return res, nil
+	}
+
+	return 0x0, io.EOF
+}
+
+func (sb *StateBuffer) ReadUint32() (uint32, error) {
+	if sb.err != nil {
+		return 0x0, sb.err
+	}
+
+	if sb.pos+4 <= len(sb.Data) {
+		res := binary.LittleEndian.Uint32(sb.Data[sb.pos:])
+		sb.pos = sb.pos + 4
+		return res, nil
+	}
+
+	return 0x0, io.EOF
+}
+
+func (sb *StateBuffer) ReadUint64() (uint64, error) {
+	if sb.err != nil {
+		return 0x0, sb.err
+	}
+
+	if sb.pos+8 <= len(sb.Data) {
+		res := binary.LittleEndian.Uint64(sb.Data[sb.pos:])
+		sb.pos = sb.pos + 8
+		return res, nil
+	}
+
+	return 0x0, io.EOF
+}
+
 func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 	if sb.err != nil {
 		return sb
 	}
 
-	// Fast path for basic types and slices.
+	switch data := data.(type) {
+	case *Collection:
+		return data.Get(sb)
+	case *Endpoint:
+		return data.Get(sb)
+	case *Tag:
+		return data.Get(sb)
+	default:
+		// do nothing
+	}
+
 	if n := intDataSize(data); n >= 0 {
 		if n+sb.pos > len(sb.Data) {
 			sb.err = io.EOF
@@ -110,21 +176,17 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 			for i := range data {
 				data[i] = math.Float64frombits(binary.LittleEndian.Uint64(bs[8*i:]))
 			}
-		case *Collection:
-			return data.Get(sb)
 		default:
-			n = 0 // fast path doesn't apply
+			n = 0
 		}
 
 		if n != 0 {
 			sb.pos += n
-		} else {
-			sb.err = errors.New("SB.Read: invalid type " + reflect.TypeOf(data).String())
+			return sb
 		}
-	} else {
-		sb.err = errors.New("SB.Read: invalid type " + reflect.TypeOf(data).String())
 	}
 
+	sb.err = errors.New("SB.Read: invalid type " + reflect.TypeOf(data).String())
 	return sb
 }
 
@@ -310,9 +372,8 @@ type UsualPacket struct {
 
 func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
 	sb.Read(&up.H).Read(&up.Point)
-	var sz uint32
-	sb.Read(&sz)
-	if sb.err == nil && sz < MAX_ELEMS {
+	sz, e := sb.ReadUint32()
+	if e == nil && sz < MAX_ELEMS {
 		for i := 0; i < int(sz); i++ {
 			up.Properties = append(up.Properties, &Tag{})
 		}
