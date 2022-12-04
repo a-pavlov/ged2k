@@ -247,6 +247,8 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 		return v.Put(sb)
 	case Collection:
 		return v.Put(sb)
+	case Tag:
+		return v.Put(sb)
 	default:
 	}
 
@@ -259,7 +261,7 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 
 	switch v := data.(type) {
 	case uint8:
-		sb.Data[0] = byte(v)
+		sb.Data[sb.pos] = byte(v)
 	case uint16:
 		binary.LittleEndian.PutUint16(sb.Data[sb.pos:], v)
 	case uint32:

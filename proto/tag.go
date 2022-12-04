@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"reflect"
+	"math"
 )
 
 const TAGTYPE_UNDEFINED byte = 0x00 // special tag definition for empty objects
@@ -393,7 +393,6 @@ type Tag struct {
 }
 
 func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
-
 	sr.Read(&t.Type)
 	if sr.err == nil {
 		if (t.Type & 0x80) != 0 {
@@ -449,7 +448,8 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 	case t.Type == TAGTYPE_HASH16:
 		bc = 16
 	default:
-		fmt.Println("Error")
+		sr.err = errors.New("Tag Get unknown type " + fmt.Sprintf("%x", t.Type))
+		return sr
 	}
 
 	if sr.err == nil && bc > 0 && bc < 100000 {
@@ -461,13 +461,34 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 }
 
 func (t *Tag) Put(sw *StateBuffer) *StateBuffer {
+	if sw.err != nil {
+		return sw
+	}
+
 	if t.Name == "" {
 		sw.Write((byte)(t.Type | 0x80)).Write(t.Id)
 	} else {
 		bc := []byte(t.Name)
-		sw.Write(uint16(len(t.Name))).Write(bc).Write(t.Type)
+		sw.Write(t.Type).Write(uint16(len(t.Name))).Write(bc)
 	}
-	return sw.Write(t.Type).Write(t.Id)
+
+	switch {
+	case t.Type == TAGTYPE_UINT8 || t.Type == TAGTYPE_UINT16 ||
+		t.Type == TAGTYPE_UINT32 || t.Type == TAGTYPE_UINT64 ||
+		t.Type == TAGTYPE_FLOAT32 || t.Type == TAGTYPE_BOOL ||
+		t.Type == TAGTYPE_HASH16 ||
+		(t.Type >= TAGTYPE_STR1 && t.Type <= TAGTYPE_STR16):
+		sw.Write(t.value)
+	case t.Type == TAGTYPE_STRING || t.Type == TAGTYPE_BOOLARRAY:
+		sw.Write(uint16(len(t.value))).Write(t.value)
+	case t.Type == TAGTYPE_BSOB:
+		sw.Write(byte(len(t.value))).Write(t.value)
+	case t.Type == TAGTYPE_BLOB:
+		sw.Write(uint32(len(t.value))).Write(t.value)
+	default:
+		sw.err = errors.New("Tag Put unknown type " + fmt.Sprintf("%x", t.Type))
+	}
+	return sw
 }
 
 func (t Tag) GetName() string {
@@ -538,15 +559,48 @@ func (t Tag) AsHash() []byte {
 	return t.value
 }
 
-func CreateTag(data interface{}, id byte) (Tag, error) {
+func (t Tag) IsFloat() bool {
+	return t.Type == TAGTYPE_FLOAT32
+}
+
+func (t Tag) AsFloat() float32 {
+	x := binary.LittleEndian.Uint32(t.value)
+	return math.Float32frombits(x)
+}
+
+func CreateTag(data interface{}, id byte, name string) Tag {
 	switch data := data.(type) {
 	case byte:
-		return Tag{Type: TAGTYPE_UINT8, Id: id, value: []byte{byte(data)}}, nil
+		return Tag{Type: TAGTYPE_UINT8, Id: id, Name: name, value: []byte{byte(data)}}
 	case uint16:
-		return Tag{Type: TAGTYPE_UINT16, Id: id, value: []byte{byte(data & 0xFF), byte(uint16(data) >> 8)}}, nil
+		return Tag{Type: TAGTYPE_UINT16, Id: id, Name: name, value: []byte{byte(data & 0xFF), byte(uint16(data) >> 8)}}
 	case uint32:
-		return Tag{Type: TAGTYPE_UINT32, Id: id, value: []byte{byte(data & 0xFF), byte((uint32(data) >> 8) & 0xFF), byte((uint32(data) >> 16) & 0xFF), byte((uint32(data) >> 24) & 0xFF)}}, nil
+		return Tag{Type: TAGTYPE_UINT32, Id: id, Name: name, value: []byte{byte(data & 0xFF), byte((uint32(data) >> 8) & 0xFF), byte((uint32(data) >> 16) & 0xFF), byte((uint32(data) >> 24) & 0xFF)}}
+	case uint64:
+		v := make([]byte, 8)
+		binary.LittleEndian.PutUint64(v, data)
+		return Tag{Type: TAGTYPE_UINT64, Id: id, Name: name, value: v}
+	case float32:
+		v := math.Float32bits(data)
+		return Tag{Type: TAGTYPE_FLOAT32, Id: id, Name: name, value: []byte{byte(v & 0xFF), byte((v >> 8) & 0xFF), byte((v >> 16) & 0xFF), byte((v >> 24) & 0xFF)}}
+	case string:
+		v := []byte(data)
+		if len(v) <= 16 {
+			return Tag{Type: TAGTYPE_STR1 + byte(len(v)) - 1, Id: id, Name: name, value: v}
+		}
+
+		return Tag{Type: TAGTYPE_STRING, Id: id, Name: name, value: v}
+	case bool:
+		var b byte
+		if data {
+			b = 0x01
+		}
+		return Tag{Type: TAGTYPE_BOOL, Id: id, Name: name, value: []byte{b}}
+	case []byte:
+		return Tag{Type: TAGTYPE_BLOB, Id: id, Name: name, value: data}
+	case Hash:
+		return Tag{Type: TAGTYPE_HASH16, Id: id, Name: name, value: data[:]}
 	default:
-		return Tag{}, errors.New("No tag for type " + reflect.TypeOf(data).String())
+		return Tag{Type: TAGTYPE_UNDEFINED, Id: FT_UNDEFINED, value: []byte{}}
 	}
 }
