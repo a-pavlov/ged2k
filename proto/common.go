@@ -3,6 +3,7 @@ package proto
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
@@ -94,6 +95,8 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 	case *Endpoint:
 		return data.Get(sb)
 	case *Tag:
+		return data.Get(sb)
+	case *PacketHeader:
 		return data.Get(sb)
 	default:
 		// do nothing
@@ -232,6 +235,8 @@ func intDataSize(data interface{}) int {
 		return 16
 	case *Hash:
 		return 16
+	case PacketHeader:
+		return 6
 	}
 	return 0
 }
@@ -291,7 +296,7 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 	return sb
 }
 
-func (sw StateBuffer) Bytes() int {
+func (sw StateBuffer) Offset() int {
 	return sw.pos
 }
 
@@ -322,8 +327,12 @@ func (h *Hash) Get(sb *StateBuffer) *StateBuffer {
 	return sb.Read(h)
 }
 
-func (h *Hash) Put(sb *StateBuffer) *StateBuffer {
+func (h Hash) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(h)
+}
+
+func (h Hash) Size() int {
+	return 16
 }
 
 type Endpoint struct {
@@ -337,6 +346,10 @@ func (i *Endpoint) Get(sb *StateBuffer) *StateBuffer {
 
 func (i Endpoint) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(i.Ip).Write(i.Port)
+}
+
+func (i Endpoint) Size() int {
+	return intDataSize(i.Ip) + intDataSize(i.Port)
 }
 
 func GetContainer(data []Serializable, sb *StateBuffer) {
@@ -387,4 +400,102 @@ func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
 func (up UsualPacket) Put(sb *StateBuffer) *StateBuffer {
 	sb.Write(up.H).Write(up.Point)
 	return sb.Write(uint32(len(up.Properties))).Write(up.Properties)
+}
+
+type PacketHeader struct {
+	Protocol byte
+	Bytes    uint32
+	Packet   byte
+}
+
+func (ph *PacketHeader) Get(sb *StateBuffer) *StateBuffer {
+	return sb.Read(&ph.Packet).Read(&ph.Bytes).Read(&ph.Packet)
+}
+
+func (ph PacketHeader) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(ph.Protocol).Write(ph.Bytes).Write(ph.Packet)
+}
+
+func (ph PacketHeader) IsEmpty() bool {
+	return ph.Protocol == 0x0 && ph.Bytes == 0 && ph.Packet == 0x0
+}
+
+func (ph PacketHeader) Size() int {
+	return int(ph.Bytes)
+}
+
+func (ph PacketHeader) PacketSize() int {
+	return ph.Size() + 5
+}
+
+func (ph *PacketHeader) Reset() {
+	ph.Bytes = 0
+	ph.Packet = 0x0
+	ph.Protocol = 0x0
+}
+
+type PacketCombiner struct {
+	data  []byte
+	bytes int
+	ph    PacketHeader
+}
+
+func (pc PacketCombiner) GetBuffer() []byte {
+	return pc.data[pc.bytes:]
+}
+
+func (pc PacketCombiner) HasBytes() int {
+	return pc.bytes
+}
+
+func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
+	for {
+		if pc.ph.IsEmpty() {
+			if pc.bytes >= intDataSize(pc.ph) {
+				var sb = StateBuffer{Data: pc.data[0:]}
+				sb.Read(&pc.ph)
+
+				if sb.err != nil {
+					return nil, sb.err
+				}
+
+				if pc.ph.Bytes > ED2K_MAX_PACKET_SIZE {
+					return nil, fmt.Errorf("max packet size overflow %d", pc.ph.Bytes)
+				}
+			}
+		}
+
+		if !pc.ph.IsEmpty() {
+			if pc.ph.PacketSize() > len(pc.data) {
+				// reallocate
+				newSize := len(pc.data) * 2
+				if pc.ph.PacketSize() > newSize {
+					newSize = pc.ph.PacketSize()
+				}
+
+				buf := make([]byte, newSize)
+				copy(buf, pc.data[:pc.bytes])
+				pc.data = buf
+			}
+
+			if pc.ph.PacketSize() <= pc.bytes {
+				return pc.data[0:pc.ph.PacketSize()], nil
+			}
+		}
+
+		length, err := reader.Read(pc.data[pc.bytes:])
+
+		if err != nil {
+			return nil, err
+		}
+
+		pc.bytes += length
+	}
+}
+
+func (pc *PacketCombiner) Renew() {
+	// copy tail to the head
+	copy(pc.data[0:], pc.data[pc.ph.PacketSize():pc.bytes])
+	pc.bytes = pc.bytes - pc.ph.PacketSize()
+	pc.ph.Reset()
 }

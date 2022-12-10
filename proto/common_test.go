@@ -2,6 +2,8 @@ package proto
 
 import (
 	"bytes"
+	"encoding/binary"
+	"fmt"
 	"io"
 	"testing"
 
@@ -29,8 +31,8 @@ func Test_trivial(t *testing.T) {
 		t.Errorf("Unable to serialize %v", w.Error())
 	}
 
-	if w.Bytes() != 4 {
-		t.Errorf("Wrote bytes is  wrong %d", w.Bytes())
+	if w.Offset() != 4 {
+		t.Errorf("Wrote bytes is  wrong %d", w.Offset())
 	}
 
 	s.Put(&w)
@@ -43,7 +45,21 @@ func Test_hash(t *testing.T) {
 	h := md4.New()
 	io.WriteString(h, "test")
 	io.WriteString(h, "test2")
-	//fmt.Printf("MD4 %x", h.Sum(nil))
+
+	var myH Hash
+
+	if len(myH) != 16 {
+		t.Error("Hash wrong size")
+	}
+
+	arr := make([]byte, 0)
+	arr = h.Sum(arr)
+
+	if len(arr) != 16 {
+		t.Error("Hash obtain wrong size")
+	}
+
+	//t.Errorf("Hash calculated %x", arr)
 
 	var term Hash = Terminal
 	var ed2k Hash = LIBED2K
@@ -75,6 +91,7 @@ func Test_hash(t *testing.T) {
 	if h4 != term {
 		t.Errorf("Term hash %x not match %x", term, h4)
 	}
+
 }
 
 func Test_byteContainer(t *testing.T) {
@@ -222,4 +239,211 @@ func Test_testGetters(t *testing.T) {
 
 func Test_usualPkg(t *testing.T) {
 
+}
+
+type CustomProvider struct {
+	data     []byte
+	portions []int
+	cindx    int
+}
+
+func (cp *CustomProvider) Read(b []byte) (n int, err error) {
+	startPos := 0
+	endPos := len(cp.data)
+
+	if cp.cindx > len(cp.portions) {
+		return 0, io.EOF
+	}
+
+	if cp.cindx > 0 {
+		startPos = cp.portions[cp.cindx-1]
+	}
+
+	if cp.cindx < len(cp.portions) {
+		endPos = cp.portions[cp.cindx]
+	}
+
+	if endPos-startPos > len(b) {
+		panic(fmt.Sprintf("Incoming buffer too small %d required %d", len(b), endPos-startPos))
+	}
+
+	count := copy(b, cp.data[startPos:endPos])
+	cp.cindx++
+	return count, nil
+}
+
+type OneByteProvider struct {
+	data []byte
+	pos  int
+}
+
+func (cp *OneByteProvider) Read(b []byte) (n int, err error) {
+	if cp.pos >= len(cp.data) {
+		return 0, io.EOF
+	}
+
+	b[0] = cp.data[cp.pos]
+	cp.pos++
+	return 1, nil
+}
+
+func Test_customProvider(t *testing.T) {
+	cp := CustomProvider{data: []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09},
+		portions: []int{2, 4, 7}}
+	buf := make([]byte, 4)
+	c, _ := cp.Read(buf)
+	if c != 2 {
+		t.Errorf("Wrong bytes provided %d expected 2", c)
+	}
+
+	if !bytes.Equal(buf[0:2], cp.data[0:2]) {
+		t.Errorf("Wrong content %x stage 1", buf)
+	}
+
+	c, _ = cp.Read(buf)
+	if c != 2 {
+		t.Errorf("Wrong bytes provided %d expected 2", c)
+	}
+
+	if !bytes.Equal(buf[0:2], cp.data[2:4]) {
+		t.Errorf("Wrong content %x stage 2", buf)
+	}
+
+	c, _ = cp.Read(buf)
+	if c != 3 {
+		t.Errorf("Wrong bytes provided %d expected 3", c)
+	}
+
+	if !bytes.Equal(buf[0:3], cp.data[4:7]) {
+		t.Errorf("Wrong content %x stage 3", buf)
+	}
+
+	c, _ = cp.Read(buf)
+	if c != 3 {
+		t.Errorf("Wrong bytes provided %d expected 3", c)
+	}
+
+	if !bytes.Equal(buf[0:3], cp.data[7:10]) {
+		t.Errorf("Wrong content %x stage 4", buf)
+	}
+}
+
+func Test_packetCombiner(t *testing.T) {
+	cp := CustomProvider{data: []byte{OP_EDONKEYHEADER, 0x04, 0x00, 0x00, 0x00, OP_LOGINREQUEST, 0x01, 0x02, 0x03, // packet 1
+		OP_EDONKEYPROT, 0x01, 0x00, 0x00, 0x00, OP_REJECT, // packet 2
+		OP_EDONKEYHEADER, 0x07, 0x00, 0x00, 0x00, OP_GETSERVERLIST, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}, // packet 3
+		portions: []int{3, 7, 12, 22}}
+	pc := PacketCombiner{data: make([]byte, 30)}
+	data, err := pc.Read(&cp)
+
+	if err != nil {
+		t.Errorf("Reading packet 1 error %v", err)
+	} else {
+		if !bytes.Equal(data, cp.data[0:9]) {
+			t.Errorf("Reading packet 1 content is wrong %x expected %x", data, cp.data[0:9])
+		}
+	}
+
+	pc.Renew()
+
+	data, err = pc.Read(&cp)
+	if err != nil {
+		t.Errorf("Reading packet 2 error %v", err)
+	} else if !bytes.Equal(data, cp.data[9:15]) {
+		t.Errorf("Reading packet 2 content is wrong %x expected %x", data, cp.data[9:15])
+	}
+
+	pc.Renew()
+
+	data, err = pc.Read(&cp)
+	if err != nil {
+		t.Errorf("Reading packet 3 error %v", err)
+	} else if !bytes.Equal(data, cp.data[15:]) {
+		t.Errorf("Reading packet 3 content is wrong %x expected %x", data, cp.data[15:])
+	}
+}
+
+func Test_packetCombinerRealloc(t *testing.T) {
+	cp := OneByteProvider{data: []byte{OP_EDONKEYHEADER, 0x04, 0x00, 0x00, 0x00, OP_LOGINREQUEST, 0x01, 0x02, 0x03, // packet 1
+		OP_EDONKEYPROT, 0x01, 0x00, 0x00, 0x00, OP_REJECT, // packet 2
+		OP_EDONKEYHEADER, 0x07, 0x00, 0x00, 0x00, OP_GETSERVERLIST, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}} // packet 3
+
+	pc := PacketCombiner{data: make([]byte, 6)}
+	data, err := pc.Read(&cp)
+
+	if err != nil {
+		t.Errorf("Reading packet 1 error %v", err)
+	} else {
+		if !bytes.Equal(data, cp.data[0:9]) {
+			t.Errorf("Reading packet 1 content is wrong %x expected %x", data, cp.data[0:9])
+		}
+	}
+
+	pc.Renew()
+
+	data, err = pc.Read(&cp)
+	if err != nil {
+		t.Errorf("Reading packet 2 error %v", err)
+	} else if !bytes.Equal(data, cp.data[9:15]) {
+		t.Errorf("Reading packet 2 content is wrong %x expected %x", data, cp.data[9:15])
+	}
+
+	pc.Renew()
+
+	data, err = pc.Read(&cp)
+	if err != nil {
+		t.Errorf("Reading packet 3 error %v", err)
+	} else if !bytes.Equal(data, cp.data[15:]) {
+		t.Errorf("Reading packet 3 content is wrong %x expected %x", data, cp.data[15:])
+	}
+
+	if len(pc.data) != 12 { // incomig buffer x2 is enougn
+		t.Errorf("Buffer has wrong size %d expected %d", len(pc.data), 12)
+	}
+
+	pc.Renew()
+
+	if pc.HasBytes() != 0 {
+		t.Errorf("Finalization bytes incorrect %d", pc.HasBytes())
+	}
+
+	_, err = pc.Read(&cp)
+
+	if err != io.EOF {
+		t.Errorf("Incorrect finalization")
+	}
+
+	buf2 := make([]byte, 10005)
+	for i := range buf2 {
+		buf2[i] = byte(i % 255)
+	}
+
+	binary.LittleEndian.PutUint32(buf2[1:], 10000)
+
+	data, err = pc.Read(bytes.NewReader(buf2))
+	if err != nil {
+		t.Errorf("Error on reading large packet %v", err)
+	} else {
+		if len(data) != 10005 {
+			t.Errorf("Wrong res data len %d", len(data))
+		} else {
+			for i, v := range data {
+				if i >= 5 {
+					if v != byte(i%255) {
+						t.Errorf("Wrong byte %v expected %v on %d", v, (i % 255), i)
+					}
+				}
+			}
+		}
+	}
+}
+
+func Test_packetCombinerOverflow(t *testing.T) {
+	cp := OneByteProvider{data: []byte{OP_EDONKEYHEADER, 0x04, 0xFF, 0x0F, 0xAB, OP_LOGINREQUEST, 0x01, 0x02, 0x03}}
+	pc := PacketCombiner{data: make([]byte, 6)}
+	data, err := pc.Read(&cp)
+
+	if err == nil || data != nil {
+		t.Error("Overflow error expected")
+	}
 }

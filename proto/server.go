@@ -52,3 +52,5 @@ func (fs *FoundFileSources) Put(sb *StateBuffer) *StateBuffer {
 	var sz uint8 = uint8(len(fs.Sources))
 	return sb.Write(fs.H).Write(sz).Write(fs.Sources)
 }
+
+type LoginRequest UsualPacket

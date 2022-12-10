@@ -39,4 +39,28 @@ func main() {
 	if t.IsUint64() {
 		fmt.Println("Tag 64", t.AsUint64(), t.Name)
 	}
+
+	x2 := make([]byte, 0)
+	x2 = test2(x2)
+	fmt.Printf("X: %x\n", x2)
+
+}
+
+func test2(x []byte) []byte {
+	x = append(x, 0x01)
+	x = append(x, 0x02)
+	return x
+}
+
+func receiver(c chan interface{}) {
+	for x := range c {
+		switch data := x.(type) {
+		case uint8:
+			fmt.Println("Recv", data)
+		case uint32:
+			fmt.Println("Recv", data)
+		default:
+			fmt.Println("Default")
+		}
+	}
 }
