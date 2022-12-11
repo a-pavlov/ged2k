@@ -424,10 +424,6 @@ func (ph PacketHeader) Size() int {
 	return int(ph.Bytes)
 }
 
-func (ph PacketHeader) PacketSize() int {
-	return ph.Size() + 5
-}
-
 func (ph *PacketHeader) Reset() {
 	ph.Bytes = 0
 	ph.Packet = 0x0
@@ -435,67 +431,71 @@ func (ph *PacketHeader) Reset() {
 }
 
 type PacketCombiner struct {
-	data  []byte
-	bytes int
-	ph    PacketHeader
-}
-
-func (pc PacketCombiner) GetBuffer() []byte {
-	return pc.data[pc.bytes:]
-}
-
-func (pc PacketCombiner) HasBytes() int {
-	return pc.bytes
+	data []byte
+	ph   PacketHeader
 }
 
 func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
-	for {
-		if pc.ph.IsEmpty() {
-			if pc.bytes >= intDataSize(pc.ph) {
-				var sb = StateBuffer{Data: pc.data[0:]}
-				sb.Read(&pc.ph)
+	bc := BufferCombiner{data: make([]byte, 6)}
+	data, err := bc.Read(reader)
+	if err != nil {
+		return nil, err
+	}
 
-				if sb.err != nil {
-					return nil, sb.err
-				}
+	var sb = StateBuffer{Data: data}
+	sb.Read(&pc.ph)
 
-				if pc.ph.Bytes > ED2K_MAX_PACKET_SIZE {
-					return nil, fmt.Errorf("max packet size overflow %d", pc.ph.Bytes)
-				}
-			}
+	if sb.err != nil {
+		return nil, sb.err
+	}
+
+	if pc.ph.Bytes > ED2K_MAX_PACKET_SIZE {
+		return nil, fmt.Errorf("max packet size overflow %d", pc.ph.Bytes)
+	}
+
+	if pc.data == nil {
+		pc.data = make([]byte, 6)
+	}
+
+	if pc.ph.Size() > len(pc.data) {
+		// reallocate
+		newSize := len(pc.data) * 2
+		if pc.ph.Size() > newSize {
+			newSize = pc.ph.Size()
 		}
 
-		if !pc.ph.IsEmpty() {
-			if pc.ph.PacketSize() > len(pc.data) {
-				// reallocate
-				newSize := len(pc.data) * 2
-				if pc.ph.PacketSize() > newSize {
-					newSize = pc.ph.PacketSize()
-				}
+		buf := make([]byte, newSize)
+		pc.data = buf
+	}
 
-				buf := make([]byte, newSize)
-				copy(buf, pc.data[:pc.bytes])
-				pc.data = buf
-			}
-
-			if pc.ph.PacketSize() <= pc.bytes {
-				return pc.data[0:pc.ph.PacketSize()], nil
-			}
-		}
-
-		length, err := reader.Read(pc.data[pc.bytes:])
-
+	pc.data[0] = pc.ph.Packet
+	if pc.ph.Bytes > 1 {
+		bc2 := BufferCombiner{data: pc.data[1:pc.ph.Bytes]}
+		_, err = bc2.Read(reader)
 		if err != nil {
 			return nil, err
 		}
-
-		pc.bytes += length
 	}
+
+	return pc.data[:pc.ph.Bytes], nil
 }
 
-func (pc *PacketCombiner) Renew() {
-	// copy tail to the head
-	copy(pc.data[0:], pc.data[pc.ph.PacketSize():pc.bytes])
-	pc.bytes = pc.bytes - pc.ph.PacketSize()
-	pc.ph.Reset()
+type BufferCombiner struct {
+	data []byte
+	pos  int
+}
+
+func (bc *BufferCombiner) Read(reader io.Reader) ([]byte, error) {
+	for {
+		length, err := reader.Read(bc.data[bc.pos:])
+		if err != nil {
+			return bc.data, err
+		}
+
+		bc.pos += length
+
+		if bc.pos == len(bc.data) {
+			return bc.data, nil
+		}
+	}
 }
