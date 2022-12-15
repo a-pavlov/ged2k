@@ -470,3 +470,43 @@ func Test_bufferCombiner(t *testing.T) {
 		t.Errorf("Received wrong bytes %v", buf)
 	}
 }
+
+func Test_usualPacket(t *testing.T) {
+	var version uint32 = 0x3c
+	var versionClient uint32 = 0x01
+	var capability uint32 = 0x77
+
+	var hello UsualPacket
+	hello.H = LIBED2K
+	hello.Point = Endpoint{Ip: 0, Port: 20033}
+	hello.Properties = append(hello.Properties, CreateTag(version, CT_VERSION, ""))
+	hello.Properties = append(hello.Properties, CreateTag(capability, CT_SERVER_FLAGS, ""))
+	hello.Properties = append(hello.Properties, CreateTag(versionClient, CT_EMULE_VERSION, ""))
+	hello.Properties = append(hello.Properties, CreateTag("ged2k", CT_NAME, ""))
+
+	if len(hello.Properties) != 4 {
+		t.Errorf("hello properties length incorrect %d", len(hello.Properties))
+	}
+
+	buf := make([]byte, 100)
+	sb := StateBuffer{Data: buf}
+	sb.Write(hello)
+	if sb.err != nil {
+		t.Errorf("Can not write hello %v", sb.Error())
+	} else {
+		sb2 := StateBuffer{Data: buf}
+		var hello2 UsualPacket
+		sb2.Read(&hello2)
+		if sb2.Error() != nil {
+			t.Errorf("Can not read hello %v", sb2.Error())
+		} else {
+			if len(hello2.Properties) != 4 {
+				t.Errorf("Hello 2 prop len wrong %d", len(hello2.Properties))
+			}
+
+			if !bytes.Equal(hello.H[:], LIBED2K[:]) {
+				t.Errorf("Hello 2 hash incorrect %x", hello2.H)
+			}
+		}
+	}
+}

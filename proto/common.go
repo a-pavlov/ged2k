@@ -92,11 +92,15 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 	switch data := data.(type) {
 	case *Collection:
 		return data.Get(sb)
+	case *TagCollection:
+		return data.Get(sb)
 	case *Endpoint:
 		return data.Get(sb)
 	case *Tag:
 		return data.Get(sb)
 	case *PacketHeader:
+		return data.Get(sb)
+	case *UsualPacket:
 		return data.Get(sb)
 	default:
 		// do nothing
@@ -252,7 +256,11 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 		return v.Put(sb)
 	case Collection:
 		return v.Put(sb)
+	case TagCollection:
+		return v.Put(sb)
 	case Tag:
+		return v.Put(sb)
+	case UsualPacket:
 		return v.Put(sb)
 	default:
 	}
@@ -362,6 +370,7 @@ func GetContainer(data []Serializable, sb *StateBuffer) {
 }
 
 type Collection []Serializable
+type TagCollection []Tag
 
 func (c *Collection) Get(sb *StateBuffer) *StateBuffer {
 	for i := 0; i < len(*c); i++ {
@@ -379,10 +388,26 @@ func (c Collection) Put(sb *StateBuffer) *StateBuffer {
 	return sb
 }
 
+func (c *TagCollection) Get(sb *StateBuffer) *StateBuffer {
+	for i := 0; i < len(*c); i++ {
+		(*c)[i].Get(sb)
+	}
+
+	return sb
+}
+
+func (c TagCollection) Put(sb *StateBuffer) *StateBuffer {
+	for i := 0; i < len(c); i++ {
+		c[i].Put(sb)
+	}
+
+	return sb
+}
+
 type UsualPacket struct {
 	H          Hash
 	Point      Endpoint
-	Properties Collection
+	Properties TagCollection
 }
 
 func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
@@ -390,7 +415,7 @@ func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
 	sz, e := sb.ReadUint32()
 	if e == nil && sz < MAX_ELEMS {
 		for i := 0; i < int(sz); i++ {
-			up.Properties = append(up.Properties, &Tag{})
+			up.Properties = append(up.Properties, Tag{})
 		}
 		sb.Read(&up.Properties)
 	}

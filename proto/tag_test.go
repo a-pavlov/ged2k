@@ -193,3 +193,24 @@ func Test_tagCreation(t *testing.T) {
 		}
 	}
 }
+
+func Test_tagGenericCollection(t *testing.T) {
+	var collection Collection
+	var data uint32 = 0x3c
+	x := CreateTag(data, CT_EMULE_RESERVED8, "")
+	x2 := CreateTag(uint32(0x45), CT_EMULE_RESERVED3, "")
+	collection = append(collection, &x)
+	collection = append(collection, &x2)
+
+	buf := make([]byte, 30)
+	stateBuffer := StateBuffer{Data: buf}
+	stateBuffer.Write(collection)
+	if stateBuffer.Error() != nil {
+		t.Errorf("Can not write tag collection: %v", stateBuffer.err)
+	}
+
+	if stateBuffer.Offset() <= 0 {
+		t.Errorf("Wrote bytes count incorrect %v", stateBuffer.Offset())
+	}
+
+}
