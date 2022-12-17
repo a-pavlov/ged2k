@@ -10,17 +10,23 @@ func main() {
 	fmt.Println("Hello ged2k")
 	reader := bufio.NewReader(os.Stdin)
 	sc := ServerConnection{buffer: make([]byte, 1024)}
+	s := Session{comm: make(chan string)}
+	go s.Tick()
+
+L:
 	for {
 		message, _ := reader.ReadString('\n')
 		switch message {
 		case "quit\n":
-			return
+			break L
 		case "start\n":
 			go sc.Process()
 		default:
 			fmt.Print("RESP", message)
 		}
 	}
+
+	s.Wait()
 }
 
 func test2(x []byte) []byte {
