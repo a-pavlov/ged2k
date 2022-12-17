@@ -10,8 +10,11 @@ func main() {
 	fmt.Println("Hello ged2k")
 	reader := bufio.NewReader(os.Stdin)
 	sc := ServerConnection{buffer: make([]byte, 1024)}
-	s := Session{comm: make(chan string)}
-	go s.Tick()
+	s := Session{comm: make(chan string),
+		register_connection:   make(chan *SessionConnection),
+		unregister_connection: make(chan *SessionConnection),
+		connections:           make(map[*SessionConnection]bool)}
+	s.Start()
 
 L:
 	for {
@@ -26,7 +29,7 @@ L:
 		}
 	}
 
-	s.Wait()
+	s.Stop()
 }
 
 func test2(x []byte) []byte {
