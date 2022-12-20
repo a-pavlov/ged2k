@@ -510,3 +510,24 @@ func Test_usualPacket(t *testing.T) {
 		}
 	}
 }
+
+func Test_ByteContainer(t *testing.T) {
+	data := []byte{0x03, 0x00, 0x31, 0x32, 0x33}
+	bc := ByteContainer{}
+	sb := StateBuffer{Data: data}
+	bc.Get(&sb)
+	if sb.err != nil {
+		t.Errorf("Get byte container from data error %v\n", sb.err)
+	} else {
+		recv := make([]byte, 5)
+		sb2 := StateBuffer{Data: recv}
+		bc.Put(&sb2)
+		if sb2.err != nil {
+			t.Errorf("Put byte container error %v\n", sb2.err)
+		} else {
+			if !bytes.Equal(recv, data) {
+				t.Errorf("Wrote bytes %x do not match original %x\n", recv, data)
+			}
+		}
+	}
+}

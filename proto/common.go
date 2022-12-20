@@ -427,6 +427,26 @@ func (up UsualPacket) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(uint32(len(up.Properties))).Write(up.Properties)
 }
 
+type ByteContainer []byte
+
+func (bc *ByteContainer) Get(sb *StateBuffer) *StateBuffer {
+	var len uint16
+	sb.Read(&len)
+	if sb.err == nil {
+		data := make([]byte, int(len))
+		sb.Read(data)
+		if sb.err == nil {
+			*bc = data
+		}
+	}
+
+	return sb
+}
+
+func (bc ByteContainer) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(uint16(len(bc))).Write([]byte(bc))
+}
+
 type PacketHeader struct {
 	Protocol byte
 	Bytes    uint32
@@ -455,9 +475,20 @@ func (ph *PacketHeader) Reset() {
 	ph.Protocol = 0x0
 }
 
+func (ph *PacketHeader) Read(buffer []byte) {
+	ph.Protocol = buffer[0]
+	ph.Bytes = binary.LittleEndian.Uint32(buffer[1:])
+	ph.Packet = buffer[5]
+}
+
+func (ph PacketHeader) Write(buffer []byte) {
+	buffer[0] = ph.Protocol
+	binary.LittleEndian.PutUint32(buffer[1:], ph.Bytes)
+	buffer[5] = ph.Packet
+}
+
 type PacketCombiner struct {
 	data []byte
-	ph   PacketHeader
 }
 
 func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
@@ -467,42 +498,38 @@ func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	var sb = StateBuffer{Data: data}
-	sb.Read(&pc.ph)
+	var ph PacketHeader
+	ph.Read(data)
 
-	if sb.err != nil {
-		return nil, sb.err
-	}
-
-	if pc.ph.Bytes > ED2K_MAX_PACKET_SIZE {
-		return nil, fmt.Errorf("max packet size overflow %d", pc.ph.Bytes)
+	if ph.Bytes > ED2K_MAX_PACKET_SIZE {
+		return nil, fmt.Errorf("max packet size overflow %d", ph.Bytes)
 	}
 
 	if pc.data == nil {
 		pc.data = make([]byte, 6)
 	}
 
-	if pc.ph.Size() > len(pc.data) {
+	if ph.Size() > len(pc.data) {
 		// reallocate
 		newSize := len(pc.data) * 2
-		if pc.ph.Size() > newSize {
-			newSize = pc.ph.Size()
+		if ph.Size() > newSize {
+			newSize = ph.Size()
 		}
 
 		buf := make([]byte, newSize)
 		pc.data = buf
 	}
 
-	pc.data[0] = pc.ph.Packet
-	if pc.ph.Bytes > 1 {
-		bc2 := BufferCombiner{data: pc.data[1:pc.ph.Bytes]}
+	pc.data[0] = ph.Packet
+	if ph.Bytes > 1 {
+		bc2 := BufferCombiner{data: pc.data[1:ph.Bytes]}
 		_, err = bc2.Read(reader)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return pc.data[:pc.ph.Bytes], nil
+	return pc.data[:ph.Bytes], nil
 }
 
 type BufferCombiner struct {

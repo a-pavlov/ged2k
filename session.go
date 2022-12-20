@@ -8,8 +8,9 @@ import (
 )
 
 type SessionConnection struct {
-	conn net.Conn
-	err  error
+	config Config
+	conn   net.Conn
+	err    error
 }
 
 type Session struct {
@@ -124,4 +125,10 @@ func (s *Session) accept(listener *net.Listener, register_connection chan *Sessi
 			register_connection <- &SessionConnection{conn: c, err: e}
 		}
 	}
+}
+
+func (s *Session) connect(address string, channel chan interface{}) {
+	//connection, err := net.Dial("tcp", address)
+	//if err != nil {
+	//}
 }

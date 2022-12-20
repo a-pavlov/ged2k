@@ -57,3 +57,5 @@ const OP_FOUNDSOURCES_OBFU byte = 0x44 // <HASH 16><count 1>(<ID 4><PORT 2><obf
 // obf&0x08))[count]
 
 const ED2K_MAX_PACKET_SIZE uint32 = 125000
+
+const HEADER_SIZE int = 6

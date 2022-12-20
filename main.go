@@ -23,7 +23,7 @@ L:
 		case "quit\n":
 			break L
 		case "start\n":
-			go sc.Process()
+			go sc.Start()
 		default:
 			fmt.Print("RESP", message)
 		}
