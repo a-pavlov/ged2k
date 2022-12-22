@@ -517,17 +517,38 @@ func Test_ByteContainer(t *testing.T) {
 	sb := StateBuffer{Data: data}
 	bc.Get(&sb)
 	if sb.err != nil {
-		t.Errorf("Get byte container from data error %v\n", sb.err)
+		t.Errorf("Get byte container from data error %v", sb.err)
 	} else {
+		if string(bc) != "123" {
+			t.Errorf("As string error %x", bc)
+		}
 		recv := make([]byte, 5)
 		sb2 := StateBuffer{Data: recv}
 		bc.Put(&sb2)
 		if sb2.err != nil {
-			t.Errorf("Put byte container error %v\n", sb2.err)
+			t.Errorf("Put byte container error %v", sb2.err)
 		} else {
 			if !bytes.Equal(recv, data) {
-				t.Errorf("Wrote bytes %x do not match original %x\n", recv, data)
+				t.Errorf("Wrote bytes %x do not match original %x", recv, data)
 			}
 		}
+	}
+}
+
+func Test_IdSoftReading(t *testing.T) {
+	data := []byte{0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00}
+	id := IdChange{}
+	sb := StateBuffer{Data: data}
+	id.Get(&sb)
+	if sb.err != nil {
+		t.Errorf("Can not soft serialize %v", sb.err)
+	} else {
+		if id.ClientId != 1 || id.TcpFlags != 2 || id.AuxPort != 0 {
+			t.Errorf("Wrong data on soft serialize")
+		}
+	}
+
+	if sb.Remain() != 0 {
+		t.Errorf("Remain incorrect %d expected 0", sb.Remain())
 	}
 }

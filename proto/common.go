@@ -1,10 +1,13 @@
 package proto
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"reflect"
 )
@@ -312,6 +315,10 @@ func (sw StateBuffer) Error() error {
 	return sw.err
 }
 
+func (sb StateBuffer) Remain() int {
+	return len(sb.Data) - sb.pos
+}
+
 type Some struct {
 	Ip   uint16
 	Port uint16
@@ -501,6 +508,8 @@ func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
 	var ph PacketHeader
 	ph.Read(data)
 
+	fmt.Printf("Packet header %x/%d/%x\n", ph.Protocol, ph.Bytes, ph.Packet)
+
 	if ph.Bytes > ED2K_MAX_PACKET_SIZE {
 		return nil, fmt.Errorf("max packet size overflow %d", ph.Bytes)
 	}
@@ -516,6 +525,8 @@ func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
 			newSize = ph.Size()
 		}
 
+		fmt.Println("reallocate", newSize)
+
 		buf := make([]byte, newSize)
 		pc.data = buf
 	}
@@ -527,6 +538,25 @@ func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if ph.Protocol == OP_PACKEDPROT {
+		b := bytes.NewReader(pc.data[1:ph.Bytes])
+		z, err := zlib.NewReader(b)
+		if err != nil {
+			return nil, err
+		}
+		defer z.Close()
+		p, err := ioutil.ReadAll(z)
+		if err != nil {
+			return nil, err
+		}
+		// TODO - fix this unnessesary copying
+		tmp := make([]byte, len(p)+1)
+		tmp[0] = ph.Packet
+		ph.Bytes = uint32(len(tmp))
+		copy(tmp[1:], p)
+		pc.data = tmp
 	}
 
 	return pc.data[:ph.Bytes], nil

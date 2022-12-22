@@ -58,8 +58,71 @@ func (sc *ServerConnection) Start() {
 			if error != nil {
 				fmt.Printf("Can not read bytes from server %v", error)
 			} else {
-				fmt.Printf("Bytes from server %x", bytes)
+				fmt.Printf("Bytes from server %x count %d --> ", bytes, len(bytes))
 			}
+
+			sb := proto.StateBuffer{Data: bytes[1:]}
+
+			switch bytes[0] {
+			case proto.OP_SERVERLIST:
+				elems, err := sb.ReadUint8()
+				if err == nil && elems < 100 {
+					c := proto.Collection{}
+					for i := 0; i < int(elems); i++ {
+						c = append(c, &proto.Endpoint{})
+					}
+					sb.Read(&c)
+				}
+			case proto.OP_GETSERVERLIST:
+				// ignore
+			case proto.OP_SERVERMESSAGE:
+				bc := proto.ByteContainer{}
+				bc.Get(&sb)
+				if sb.Error() == nil {
+					fmt.Println("Receive message from server", string(bc))
+				}
+			case proto.OP_SERVERSTATUS:
+				ss := proto.Status{}
+				ss.Get(&sb)
+				if sb.Error() == nil {
+					fmt.Println("Server status files:", ss.FilesCount, "users", ss.UsersCount)
+				}
+			case proto.OP_IDCHANGE:
+				idc := proto.IdChange{}
+				idc.Get(&sb)
+				if sb.Error() == nil {
+					fmt.Println("Server id change", idc.ClientId)
+				}
+			case proto.OP_SERVERIDENT:
+				p := proto.UsualPacket{}
+				p.Get(&sb)
+				if sb.Error() == nil {
+					fmt.Println("Received server info packet")
+				}
+			case proto.OP_SEARCHRESULT:
+				// ignore
+			case proto.OP_SEARCHREQUEST:
+				// ignore
+			case proto.OP_QUERY_MORE_RESULT:
+				// ignore - out only
+			case proto.OP_GETSOURCES:
+				// ignore - out only
+			case proto.OP_FOUNDSOURCES:
+				// ignore
+			case proto.OP_CALLBACKREQUEST:
+				// ignore - out
+			case proto.OP_CALLBACKREQUESTED:
+				// ignore
+			case proto.OP_CALLBACK_FAIL:
+				// ignore
+			default:
+				fmt.Printf("Packet %x", bytes)
+			}
+
+			if sb.Error() != nil {
+				fmt.Printf("Error on packet read %v", sb.Error())
+			}
+
 			/*
 				switch(bytes[0]) {
 					.OP_SERVERLIST.value, ServerList.class);
@@ -79,7 +142,5 @@ func (sc *ServerConnection) Start() {
 				}
 			}*/
 		}
-
-		connection.Close()
 	}
 }

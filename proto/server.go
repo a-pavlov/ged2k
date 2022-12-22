@@ -54,3 +54,38 @@ func (fs *FoundFileSources) Put(sb *StateBuffer) *StateBuffer {
 }
 
 type LoginRequest UsualPacket
+
+type IdChange struct {
+	ClientId uint32
+	TcpFlags uint32
+	AuxPort  uint32
+}
+
+func (i *IdChange) Get(sb *StateBuffer) *StateBuffer {
+	sb.Read(&i.ClientId)
+	if sb.err == nil && sb.Remain() >= 4 {
+		sb.Read(&i.TcpFlags)
+		if sb.err == nil && sb.Remain() >= 4 {
+			sb.Read(&i.AuxPort)
+		}
+	}
+
+	return sb
+}
+
+func (i IdChange) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(i.ClientId).Write(i.TcpFlags).Write(i.AuxPort)
+}
+
+type Status struct {
+	UsersCount uint32
+	FilesCount uint32
+}
+
+func (s *Status) Get(sb *StateBuffer) *StateBuffer {
+	return sb.Read(&s.UsersCount).Read(&s.FilesCount)
+}
+
+func (s Status) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(s.UsersCount).Write(s.UsersCount)
+}
