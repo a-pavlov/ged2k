@@ -498,24 +498,25 @@ type PacketCombiner struct {
 	data []byte
 }
 
-func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
-	bc := BufferCombiner{data: make([]byte, 6)}
-	data, err := bc.Read(reader)
-	if err != nil {
-		return nil, err
+func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
+	ph := PacketHeader{}
+
+	if pc.data == nil {
+		pc.data = make([]byte, 6)
 	}
 
-	var ph PacketHeader
+	data, err := ReadTo(reader, pc.data[:6])
+
+	if err != nil {
+		return ph, data, err
+	}
+
 	ph.Read(data)
 
 	fmt.Printf("Packet header %x/%d/%x\n", ph.Protocol, ph.Bytes, ph.Packet)
 
 	if ph.Bytes > ED2K_MAX_PACKET_SIZE {
-		return nil, fmt.Errorf("max packet size overflow %d", ph.Bytes)
-	}
-
-	if pc.data == nil {
-		pc.data = make([]byte, 6)
+		return PacketHeader{}, data, fmt.Errorf("max packet size overflow %d", ph.Bytes)
 	}
 
 	if ph.Size() > len(pc.data) {
@@ -531,53 +532,45 @@ func (pc *PacketCombiner) Read(reader io.Reader) ([]byte, error) {
 		pc.data = buf
 	}
 
-	pc.data[0] = ph.Packet
 	if ph.Bytes > 1 {
-		bc2 := BufferCombiner{data: pc.data[1:ph.Bytes]}
-		_, err = bc2.Read(reader)
+		_, err = ReadTo(reader, pc.data[:ph.Bytes-1])
 		if err != nil {
-			return nil, err
+			return ph, data, err
 		}
 	}
 
 	if ph.Protocol == OP_PACKEDPROT {
-		b := bytes.NewReader(pc.data[1:ph.Bytes])
+		b := bytes.NewReader(pc.data[:ph.Bytes-1])
 		z, err := zlib.NewReader(b)
 		if err != nil {
-			return nil, err
+			return ph, data, err
 		}
 		defer z.Close()
-		p, err := ioutil.ReadAll(z)
+		unzipped, err := ioutil.ReadAll(z)
 		if err != nil {
-			return nil, err
+			return ph, data, err
 		}
-		// TODO - fix this unnessesary copying
-		tmp := make([]byte, len(p)+1)
-		tmp[0] = ph.Packet
-		ph.Bytes = uint32(len(tmp))
-		copy(tmp[1:], p)
-		pc.data = tmp
+
+		// correct package size
+		ph.Bytes = uint32(len(unzipped))
+		return ph, unzipped, nil
 	}
 
-	return pc.data[:ph.Bytes], nil
+	return ph, pc.data[:ph.Bytes-1], nil
 }
 
-type BufferCombiner struct {
-	data []byte
-	pos  int
-}
-
-func (bc *BufferCombiner) Read(reader io.Reader) ([]byte, error) {
+func ReadTo(r io.Reader, buffer []byte) ([]byte, error) {
+	pos := 0
 	for {
-		length, err := reader.Read(bc.data[bc.pos:])
+		n, err := r.Read(buffer[pos:])
 		if err != nil {
-			return bc.data, err
+			return buffer, err
 		}
 
-		bc.pos += length
+		pos += n
 
-		if bc.pos == len(bc.data) {
-			return bc.data, nil
+		if pos == len(buffer) {
+			return buffer, nil
 		}
 	}
 }

@@ -54,16 +54,16 @@ func (sc *ServerConnection) Start() {
 
 		pc := proto.PacketCombiner{}
 		for {
-			bytes, error := pc.Read(connection)
+			ph, bytes, error := pc.Read(connection)
 			if error != nil {
 				fmt.Printf("Can not read bytes from server %v", error)
 			} else {
 				fmt.Printf("Bytes from server %x count %d --> ", bytes, len(bytes))
 			}
 
-			sb := proto.StateBuffer{Data: bytes[1:]}
+			sb := proto.StateBuffer{Data: bytes}
 
-			switch bytes[0] {
+			switch ph.Packet {
 			case proto.OP_SERVERLIST:
 				elems, err := sb.ReadUint8()
 				if err == nil && elems < 100 {

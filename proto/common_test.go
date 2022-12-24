@@ -351,35 +351,76 @@ func Test_packetCombiner(t *testing.T) {
 		{OP_EDONKEYPROT, 0x01, 0x00, 0x00, 0x00, OP_REJECT},                                                   // packet 2
 		{OP_EDONKEYHEADER, 0x07}, {0x00, 0x00, 0x00, OP_GETSERVERLIST}, {0x04, 0x05, 0x06, 0x07, 0x08, 0x09}}} // packet 3
 	pc := PacketCombiner{}
-	data, err := pc.Read(&cp)
+	ph, data, err := pc.Read(&cp)
 
 	expected := [][]byte{
-		{OP_LOGINREQUEST, 0x01, 0x02, 0x03},
-		{OP_REJECT},
-		{OP_GETSERVERLIST, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}}
+		{0x01, 0x02, 0x03},
+		{},
+		{0x04, 0x05, 0x06, 0x07, 0x08, 0x09}}
 
 	if err != nil {
 		t.Errorf("Reading packet 1 error %v", err)
 	} else {
-		if !bytes.Equal(data, expected[0]) {
+		if !bytes.Equal(data, expected[0]) || ph.Packet != OP_LOGINREQUEST {
 			t.Errorf("Reading packet 1 content is wrong %x expected %x", data, expected[0])
 		}
 	}
 
-	data, err = pc.Read(&cp)
+	ph, data, err = pc.Read(&cp)
 	if err != nil {
 		t.Errorf("Reading packet 2 error %v", err)
-	} else if !bytes.Equal(data, expected[1]) {
+	} else if !bytes.Equal(data, expected[1]) || ph.Packet != OP_REJECT {
 		t.Errorf("Reading packet 2 content is wrong %x expected %x", data, expected[1])
 	}
 
-	data, err = pc.Read(&cp)
+	ph, data, err = pc.Read(&cp)
 	if err != nil {
 		t.Errorf("Reading packet 3 error %v", err)
-	} else if !bytes.Equal(data, expected[2]) {
+	} else if !bytes.Equal(data, expected[2]) || ph.Packet != OP_GETSERVERLIST {
 		t.Errorf("Reading packet 3 content is wrong %x expected %x", data, expected[2])
 	}
 }
+
+func ReadAll(r io.Reader) ([]byte, error) {
+	b := make([]byte, 0, 12)
+	for i := 0; i < 12; i++ {
+		b = append(b, 0)
+		fmt.Println("Arr len", len(b), "cap", cap(b))
+	}
+
+	b = append(b, 0)[:len(b)]
+
+	fmt.Println("Started", len(b), "capacity", cap(b))
+	for {
+		if len(b) == cap(b) {
+			// Add more capacity (let append pick how much).
+			b = append(b, 0)[:len(b)]
+			fmt.Println("Append to len ", len(b), "capacity", cap(b))
+		}
+		n, err := r.Read(b[len(b):cap(b)])
+		b = b[:len(b)+n]
+		fmt.Println("Read len bytes", len(b))
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return b, err
+		}
+	}
+}
+
+/*
+func Test_bp(t *testing.T) {
+	cp := OneByteProvider{data: []byte{OP_EDONKEYHEADER, 0x04, 0x00, 0x00, 0x00, OP_LOGINREQUEST, 0x01, 0x02, 0x03, // packet 1
+		OP_EDONKEYPROT, 0x01, 0x00, 0x00, 0x00, OP_REJECT, // packet 2
+		OP_EDONKEYHEADER, 0x07, 0x00, 0x00, 0x00, OP_GETSERVERLIST, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}} // packet 3
+	b, e := ReadAll(&cp)
+	if e != nil {
+		t.Errorf("Buffer read error %v", e)
+	} else {
+		t.Errorf("Length %d", len(b))
+	}
+} */
 
 /*
 
@@ -452,18 +493,17 @@ func Test_packetCombinerRealloc(t *testing.T) {
 func Test_packetCombinerOverflow(t *testing.T) {
 	cp := OneByteProvider{data: []byte{OP_EDONKEYHEADER, 0x04, 0xFF, 0x0F, 0xAB, OP_LOGINREQUEST, 0x01, 0x02, 0x03}}
 	pc := PacketCombiner{data: make([]byte, 6)}
-	data, err := pc.Read(&cp)
+	_, _, err := pc.Read(&cp)
 
-	if err == nil || data != nil {
+	if err == nil {
 		t.Error("Overflow error expected")
 	}
 }
 
 func Test_bufferCombiner(t *testing.T) {
 	var bp = BufferProvider{bufs: [][]byte{{0x01, 0x04}, {0x00, 0x00, 0x00}, {0x10}}}
-	data := make([]byte, 6)
-	var bc = BufferCombiner{data: data}
-	buf, err := bc.Read(&bp)
+	buffer := make([]byte, 6)
+	buf, err := ReadTo(&bp, buffer)
 	if err != nil {
 		t.Errorf("Reading header buffer error %v", err)
 	} else if !bytes.Equal(buf, []byte{0x01, 0x04, 0x00, 0x00, 0x00, 0x10}) {
