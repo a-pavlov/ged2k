@@ -69,6 +69,7 @@ type StringEntry struct {
 }
 
 type OperatorEntry byte
+type ParenEntry byte
 
 func CreateNumericEntry(val uint64, id byte, op byte) *NumericEntry {
 	return &NumericEntry{value: val, operator: op, tag: ByteContainer([]byte{id})}
@@ -97,13 +98,13 @@ func CreateNot() *OperatorEntry {
 	return &x
 }
 
-func CreateCloseParen() *OperatorEntry {
-	x := OperatorEntry(')')
+func CreateCloseParen() *ParenEntry {
+	x := ParenEntry(')')
 	return &x
 }
 
-func CreateOpenParen() *OperatorEntry {
-	x := OperatorEntry('(')
+func CreateOpenParen() *ParenEntry {
+	x := ParenEntry('(')
 	return &x
 }
 
@@ -113,7 +114,6 @@ func (entry NumericEntry) Put(sb *StateBuffer) *StateBuffer {
 	} else {
 		sb.Write(entry.value)
 	}
-
 	return sb.Write(entry.operator).Write(entry.tag)
 }
 
@@ -137,8 +137,65 @@ func (entry *OperatorEntry) Get(sb *StateBuffer) *StateBuffer {
 	return sb
 }
 
+func (entry ParenEntry) Put(sb *StateBuffer) *StateBuffer {
+	panic("Requested put for paren entry")
+}
+
+func (entry *ParenEntry) Get(sb *StateBuffer) *StateBuffer {
+	panic("Requested get for parent entry")
+}
+
 func (o OperatorEntry) IsBoolean() bool {
 	return byte(o) == OPER_AND || byte(o) == OPER_OR || byte(o) == OPER_NOT
+}
+
+func (o ParenEntry) IsBoolean() bool {
+	return false
+}
+
+func addOperand(dst []Serializable, op Serializable) []Serializable {
+	_, isOperator := op.(*OperatorEntry)
+	srcP, isParen := op.(*ParenEntry)
+	isCloseParen := false
+	isOpenParen := false
+	if isParen {
+		if *srcP == '(' {
+			isOpenParen = true
+		} else {
+			isCloseParen = true
+		}
+	}
+
+	if !isOperator {
+		if len(dst) > 0 {
+			_, hasOperator := dst[len(dst)-1].(*OperatorEntry)
+			dstP, hasParen := dst[len(dst)-1].(*ParenEntry)
+			hasCloseParen := false
+			hasOpenParen := false
+			if hasParen {
+				if *dstP == '(' {
+					hasOpenParen = true
+				} else {
+					hasCloseParen = true
+				}
+			}
+
+			if (!hasParen && !hasOperator && !isParen && !isOperator) || // xxx xxx
+				(!hasParen && !hasOperator && isOpenParen) || // xxx (
+				(hasCloseParen && !isParen && !isOperator) || // ) xxx
+				(hasCloseParen && isOpenParen) { // ) (
+				dst = append(dst, CreateAnd())
+			}
+
+			if hasOpenParen && isCloseParen {
+				// need to report error here
+				fmt.Println("Open-close paren found on addOperand")
+			}
+		}
+	}
+
+	dst = append(dst, op)
+	return dst
 }
 
 func BuildEntries(minSize uint64,
@@ -154,73 +211,73 @@ func BuildEntries(minSize uint64,
 	result := make([]Serializable, 0)
 
 	if len(fileType) > SEARCH_REQ_ELEM_LENGTH {
-		return result, fmt.Errorf("File type too long")
+		return result, fmt.Errorf("file type too long %d", len(fileType))
 	}
 
 	if len(fileExtension) > SEARCH_REQ_ELEM_LENGTH {
-		return result, fmt.Errorf("File ext too long")
+		return result, fmt.Errorf("file ext too long %d", len(fileExtension))
 	}
 
 	if len(codec) > SEARCH_REQ_ELEM_LENGTH {
-		return result, fmt.Errorf("Codec too long")
+		return result, fmt.Errorf("codec too long %d", len(codec))
 	}
 
 	if len(value) > SEARCH_REQ_QUERY_LENGTH {
-		return result, fmt.Errorf("Search request too long")
+		return result, fmt.Errorf("search request too long %d", len(value))
 	}
 
 	if len(value) == 0 {
-		return result, fmt.Errorf("Search request is empty")
+		return result, fmt.Errorf("search request is empty")
 	}
 
 	if fileType == ED2KFTSTR_FOLDER {
 		// for folders we search emule collections exclude ed2k links - user brackets to correct expr
-		result = append(result, CreateOpenParen())
-		result = append(result, CreateStringEntry(ED2KFTSTR_EMULECOLLECTION, FT_FILETYPE))
-		result = append(result, CreateNot())
-		result = append(result, CreateStringEntryNoTag("ED2K:\\"))
-		result = append(result, CreateCloseParen())
+		result = addOperand(result, CreateOpenParen())
+		result = addOperand(result, CreateStringEntry(ED2KFTSTR_EMULECOLLECTION, FT_FILETYPE))
+		result = addOperand(result, CreateNot())
+		result = addOperand(result, CreateStringEntryNoTag("ED2K:\\"))
+		result = addOperand(result, CreateCloseParen())
 	} else {
 		if len(fileType) != 0 {
 			if fileType == ED2KFTSTR_ARCHIVE || fileType == ED2KFTSTR_CDIMAGE {
-				result = append(result, CreateStringEntry(ED2KFTSTR_PROGRAM, FT_FILETYPE))
+				result = addOperand(result, CreateStringEntry(ED2KFTSTR_PROGRAM, FT_FILETYPE))
 			} else {
-				result = append(result, CreateStringEntry(fileType, FT_FILETYPE))
+				result = addOperand(result, CreateStringEntry(fileType, FT_FILETYPE))
 			}
 		}
 
 		// if type is not folder - process file parameters now
 		if fileType != ED2KFTSTR_EMULECOLLECTION {
 			if minSize != 0 {
-				result = append(result, CreateNumericEntry(minSize, FT_FILESIZE, ED2K_SEARCH_OP_GREATER))
+				result = addOperand(result, CreateNumericEntry(minSize, FT_FILESIZE, ED2K_SEARCH_OP_GREATER))
 			}
 
 			if maxSize != 0 {
-				result = append(result, CreateNumericEntry(maxSize, FT_FILESIZE, ED2K_SEARCH_OP_LESS))
+				result = addOperand(result, CreateNumericEntry(maxSize, FT_FILESIZE, ED2K_SEARCH_OP_LESS))
 			}
 
 			if sourcesCount != 0 {
-				result = append(result, CreateNumericEntry(uint64(sourcesCount), FT_SOURCES, ED2K_SEARCH_OP_GREATER))
+				result = addOperand(result, CreateNumericEntry(uint64(sourcesCount), FT_SOURCES, ED2K_SEARCH_OP_GREATER))
 			}
 
 			if completeSourcesCount != 0 {
-				result = append(result, CreateNumericEntry(uint64(completeSourcesCount), FT_COMPLETE_SOURCES, ED2K_SEARCH_OP_GREATER))
+				result = addOperand(result, CreateNumericEntry(uint64(completeSourcesCount), FT_COMPLETE_SOURCES, ED2K_SEARCH_OP_GREATER))
 			}
 
 			if len(fileExtension) != 0 {
-				result = append(result, CreateStringEntry(fileExtension, FT_FILEFORMAT))
+				result = addOperand(result, CreateStringEntry(fileExtension, FT_FILEFORMAT))
 			}
 
 			if len(codec) != 0 {
-				result = append(result, CreateStringEntry(codec, FT_MEDIA_CODEC))
+				result = addOperand(result, CreateStringEntry(codec, FT_MEDIA_CODEC))
 			}
 
 			if mediaLength != 0 {
-				result = append(result, CreateNumericEntry(uint64(mediaLength), FT_MEDIA_LENGTH, ED2K_SEARCH_OP_GREATER_EQUAL))
+				result = addOperand(result, CreateNumericEntry(uint64(mediaLength), FT_MEDIA_LENGTH, ED2K_SEARCH_OP_GREATER_EQUAL))
 			}
 
 			if mediaBitrate != 0 {
-				result = append(result, CreateNumericEntry(uint64(mediaBitrate), FT_MEDIA_BITRATE, ED2K_SEARCH_OP_GREATER_EQUAL))
+				result = addOperand(result, CreateNumericEntry(uint64(mediaBitrate), FT_MEDIA_BITRATE, ED2K_SEARCH_OP_GREATER_EQUAL))
 			}
 		}
 	}
@@ -229,33 +286,31 @@ func BuildEntries(minSize uint64,
 	item := ""
 
 	for _, c := range value {
-		switch c {
-		case ' ':
-		case '(':
-		case ')':
+		switch {
+		case c == ' ' || c == '(' || c == ')':
 			if verbatim {
 				item += string(c)
 			} else if len(item) != 0 {
 				oper := true
 				switch item {
 				case "AND":
-					result = append(result, CreateAnd())
+					result = addOperand(result, CreateAnd())
 				case "OR":
-					result = append(result, CreateOr())
+					result = addOperand(result, CreateOr())
 				case "NOT":
-					result = append(result, CreateNot())
+					result = addOperand(result, CreateNot())
 				default:
-					result = append(result, CreateStringEntryNoTag(item))
+					result = addOperand(result, CreateStringEntryNoTag(item))
 					oper = false
 				}
 
 				if oper {
 					if len(result) == 1 {
-						return result, fmt.Errorf("Boolean operator at the beginnig of the search expression")
+						return result, fmt.Errorf("boolean operator at the beginnig of the search expression")
 					}
 
-					if _, ok := result[len(result)-1].(*OperatorEntry); ok {
-						return result, fmt.Errorf("Two boolean operators in a row")
+					if _, ok := result[len(result)-2].(*OperatorEntry); ok {
+						return result, fmt.Errorf("two boolean operators in a row")
 					}
 				}
 
@@ -264,17 +319,31 @@ func BuildEntries(minSize uint64,
 			}
 
 			if c == '(' {
-				result = append(result, CreateOpenParen())
+				result = addOperand(result, CreateOpenParen())
 			}
 
 			if c == ')' {
-				result = append(result, CreateCloseParen())
+				result = addOperand(result, CreateCloseParen())
 			}
-		case '"':
+		case c == '"':
 			verbatim = !verbatim // change verbatim status and add this character
 		default:
 			item += string(c)
 		}
+	}
+
+	// check unclosed quotes
+	if verbatim {
+		return result, fmt.Errorf("unclosed quotation mark")
+	}
+
+	if len(item) != 0 {
+		// add last item - check it is not operator
+		if item == "AND" || item == "OR" || item == "NOT" {
+			return result, fmt.Errorf("operator at the end of expression")
+		}
+
+		result = addOperand(result, CreateStringEntryNoTag(item))
 	}
 
 	return result, nil
@@ -293,32 +362,6 @@ func PackRequest(source []Serializable) ([]Serializable, error) {
 		case *NumericEntry:
 			result = append([]Serializable{data}, result...)
 		case *OperatorEntry:
-			if *data == '(' {
-				if len(operators_stack) == 0 {
-					return result, fmt.Errorf("Incorrect parents count")
-				}
-
-				// unroll to first close paren
-				for {
-					top := len(operators_stack) - 1
-					if oper, ok := operators_stack[top].(*OperatorEntry); ok {
-						if *oper == ')' {
-							break
-						}
-
-						result = append([]Serializable{operators_stack[top]}, result...)
-						operators_stack = operators_stack[:len(operators_stack)-1]
-
-						if len(operators_stack) == 0 {
-							return result, fmt.Errorf("Incorrect parents count 2")
-						}
-
-					}
-				}
-
-				operators_stack = operators_stack[:len(operators_stack)-1]
-			}
-
 			// we have normal operator and on stack top we have normal operator
 			// prepare result - move operator from top to result and replace top
 			if data.IsBoolean() && len(operators_stack) > 0 {
@@ -328,6 +371,35 @@ func PackRequest(source []Serializable) ([]Serializable, error) {
 						operators_stack = operators_stack[:len(operators_stack)-1]
 					}
 				}
+			}
+
+			operators_stack = append(operators_stack, data)
+		case *ParenEntry:
+			if *data == '(' {
+				if len(operators_stack) == 0 {
+					return result, fmt.Errorf("incorrect parents count")
+				}
+
+				// unroll to first close paren
+			A:
+				for {
+					top := operators_stack[len(operators_stack)-1]
+					oper, ok := top.(*ParenEntry)
+					if ok && *oper == ')' {
+						break A
+					}
+
+					result = append([]Serializable{top}, result...)
+					operators_stack = operators_stack[:len(operators_stack)-1]
+
+					if len(operators_stack) == 0 {
+						return result, fmt.Errorf("incorrect parents count 2")
+					}
+				}
+
+				operators_stack = operators_stack[:len(operators_stack)-1]
+			} else {
+				operators_stack = append(operators_stack, data)
 			}
 		}
 
@@ -340,8 +412,10 @@ func PackRequest(source []Serializable) ([]Serializable, error) {
 		case *NumericEntry:
 			result = append([]Serializable{data}, result...)
 		case *OperatorEntry:
+			result = append([]Serializable{data}, result...)
+		case *ParenEntry:
 			if *data == '(' || *data == ')' {
-				return result, fmt.Errorf("Incorrect parents count 3")
+				return result, fmt.Errorf("incorrect parents count 3")
 			}
 		}
 
