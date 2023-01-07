@@ -21,6 +21,7 @@ func (sc *ServerConnection) Start() {
 	}
 
 	fmt.Println("Connected!")
+	sc.connection = connection
 
 	var version uint32 = 0x3c
 	var versionClient uint32 = (proto.GED2K_VERSION_MAJOR << 24) | (proto.GED2K_VERSION_MINOR << 17) | (proto.GED2K_VERSION_TINY << 10) | (1 << 7)
@@ -100,7 +101,7 @@ func (sc *ServerConnection) Start() {
 					fmt.Println("Received server info packet")
 				}
 			case proto.OP_SEARCHRESULT:
-				// ignore
+				fmt.Println("Search result received")
 			case proto.OP_SEARCHREQUEST:
 				// ignore
 			case proto.OP_QUERY_MORE_RESULT:
@@ -143,4 +144,33 @@ func (sc *ServerConnection) Start() {
 			}*/
 		}
 	}
+}
+
+func (sc *ServerConnection) Search(s string) {
+	parsed, err := proto.BuildEntries(0, 0, 0, 0, "", "", "", 0, 0, s)
+	for i := 0; i < 2; i++ {
+		if err == nil {
+			req, err := proto.PackRequest(parsed)
+			if err == nil {
+				stateBuffer := proto.StateBuffer{Data: sc.buffer[proto.HEADER_SIZE:]}
+				for _, s := range req {
+					s.Put(&stateBuffer)
+				}
+
+				if stateBuffer.Error() != nil {
+					fmt.Printf("Error on serialize search %v\n", stateBuffer.Error())
+				} else {
+					ph := proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: uint32(stateBuffer.Offset() + 1), Packet: proto.OP_SEARCHREQUEST}
+					ph.Write(sc.buffer)
+					n, err := sc.connection.Write(sc.buffer[:stateBuffer.Offset()+proto.HEADER_SIZE])
+					if err != nil {
+						fmt.Printf("Error on send request %v\n", err)
+					} else {
+						fmt.Printf("Bytes %d have been written\n", n)
+					}
+				}
+			}
+		}
+	}
+
 }

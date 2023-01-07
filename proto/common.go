@@ -105,6 +105,8 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 		return data.Get(sb)
 	case *UsualPacket:
 		return data.Get(sb)
+	case *ByteContainer:
+		return data.Get(sb)
 	default:
 		// do nothing
 	}
@@ -264,6 +266,8 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 	case Tag:
 		return v.Put(sb)
 	case UsualPacket:
+		return v.Put(sb)
+	case ByteContainer:
 		return v.Put(sb)
 	default:
 	}

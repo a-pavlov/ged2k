@@ -66,6 +66,18 @@ func Test_largeExpr(t *testing.T) {
 					t.Error("Wrong string values")
 				}
 
+				buffer := make([]byte, 1024)
+				sb := StateBuffer{Data: buffer}
+				for _, s := range entries {
+					s.Put(&sb)
+				}
+
+				if sb.Error() != nil {
+					t.Errorf("Serialize error %v", sb.Error())
+				} else {
+
+				}
+
 				/*
 					assertTrue(sr.entry(0) instanceof BooleanEntry && ((BooleanEntry)sr.entry(0)).operator() == Operator.OPER_OR);
 					assertTrue(sr.entry(1) instanceof StringEntry && sr.entry(1).toString().compareTo("a") == 0);

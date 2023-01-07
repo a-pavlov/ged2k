@@ -24,6 +24,8 @@ L:
 			break L
 		case "start\n":
 			go sc.Start()
+		case "search\n":
+			go sc.Search("game")
 		default:
 			fmt.Print("RESP", message)
 		}
