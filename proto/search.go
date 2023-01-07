@@ -423,3 +423,33 @@ func PackRequest(source []Serializable) ([]Serializable, error) {
 
 	return result, nil
 }
+
+type SearchResult struct {
+	Items       []UsualPacket
+	MoreResults byte
+}
+
+func (sr *SearchResult) Get(sb *StateBuffer) *StateBuffer {
+	count, err := sb.ReadUint32()
+	if err == nil {
+		if count < 1024 {
+			sr.Items = make([]UsualPacket, count)
+			for i := 0; i < int(count); i++ {
+				sr.Items[i].Get(sb)
+				if sb.err != nil {
+					break
+				}
+			}
+
+			if sb.Error() == nil {
+				sr.MoreResults, _ = sb.ReadUint8()
+			}
+		}
+	}
+
+	return sb
+}
+
+func (sr SearchResult) Put(sb *StateBuffer) *StateBuffer {
+	panic("Search result put requested")
+}

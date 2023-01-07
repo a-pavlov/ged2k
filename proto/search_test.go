@@ -101,3 +101,55 @@ func Test_largeExpr(t *testing.T) {
 		}
 	}
 }
+
+func Test_searchRes(t *testing.T) {
+	var version uint32 = 0x3c
+	var versionClient uint32 = 0x01
+	var capability uint32 = 0x77
+
+	var hello UsualPacket
+	hello.H = LIBED2K
+	hello.Point = Endpoint{Ip: 0, Port: 20033}
+	hello.Properties = append(hello.Properties, CreateTag(version, CT_VERSION, ""))
+	hello.Properties = append(hello.Properties, CreateTag(capability, CT_SERVER_FLAGS, ""))
+	hello.Properties = append(hello.Properties, CreateTag(versionClient, CT_EMULE_VERSION, ""))
+	hello.Properties = append(hello.Properties, CreateTag("ged2k", CT_NAME, ""))
+
+	if len(hello.Properties) != 4 {
+		t.Errorf("hello properties length incorrect %d", len(hello.Properties))
+	}
+
+	buf := make([]byte, 240)
+	var size uint32 = 3
+	var moreRes byte = 1
+	sb := StateBuffer{Data: buf}
+	sb.Write(size)
+	sb.Write(hello)
+	hello.Point.Ip = 1
+	hello.Point.Port = 2
+	sb.Write(hello)
+	hello.Point.Ip = 3
+	hello.Point.Port = 4
+	sb.Write(hello)
+	sb.Write(moreRes)
+
+	sbr := StateBuffer{Data: buf}
+	var sr SearchResult
+	sr.Get(&sbr)
+	if sbr.Error() != nil {
+		t.Error("Can not read search result")
+	} else if len(sr.Items) != 3 {
+		t.Errorf("Search result count is wrong: %d", len(sr.Items))
+	} else {
+		if sr.MoreResults != 0x01 {
+			t.Error("More results is wrong")
+		}
+
+		if sr.Items[0].Point.Ip != 0 || sr.Items[0].Point.Port != 20033 ||
+			sr.Items[1].Point.Ip != 1 || sr.Items[1].Point.Port != 2 ||
+			sr.Items[2].Point.Ip != 3 || sr.Items[2].Point.Port != 4 {
+			t.Error("Endpoints reading error")
+		}
+
+	}
+}

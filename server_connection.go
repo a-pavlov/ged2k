@@ -101,7 +101,13 @@ func (sc *ServerConnection) Start() {
 					fmt.Println("Received server info packet")
 				}
 			case proto.OP_SEARCHRESULT:
-				fmt.Println("Search result received")
+				p := proto.SearchResult{}
+				p.Get(&sb)
+				if sb.Error() == nil {
+					fmt.Printf("Search result received: %d, more results %v\n", len(p.Items), p.MoreResults)
+				} else {
+					fmt.Printf("Unable to de-serealize %v", sb.Error())
+				}
 			case proto.OP_SEARCHREQUEST:
 				// ignore
 			case proto.OP_QUERY_MORE_RESULT:
