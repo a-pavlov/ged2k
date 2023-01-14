@@ -596,6 +596,21 @@ func (t Tag) AsFloat() float32 {
 	return math.Float32frombits(x)
 }
 
+func (t Tag) AsInt() int {
+	switch t.Type {
+	case TAGTYPE_UINT8:
+		return int(t.AsByte())
+	case TAGTYPE_UINT16:
+		return int(t.AsUint16())
+	case TAGTYPE_UINT32:
+		return int(t.AsUint32())
+	case TAGTYPE_UINT64:
+		return -1
+	default:
+		return -2
+	}
+}
+
 func CreateTag(data interface{}, id byte, name string) Tag {
 	switch data := data.(type) {
 	case byte:

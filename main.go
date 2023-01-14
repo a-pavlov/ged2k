@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -16,16 +17,19 @@ func main() {
 L:
 	for {
 		message, _ := reader.ReadString('\n')
-		switch message {
-		case "quit\n":
+		cmd := strings.Split(strings.Trim(message, "\n"), " ")
+		switch cmd[0] {
+		case "quit":
 			break L
-		case "start\n":
-			go s.ConnectoToServer("5.45.85.226:6584")
-		case "search\n":
-			go s.Search("game")
-		case "stop\n":
+		case "start":
+			s.ConnectoToServer("5.45.85.226:6584")
+		case "search":
+			s.Search(cmd[1]) // do not check len
+		case "stop":
 			s.DisconnectFromServer()
-		case "rep\n":
+		case "slist":
+			s.GetServerList()
+		case "rep":
 			//fmt.Println("Server connection status", sc.Status())
 		default:
 			fmt.Print("RESP", message)

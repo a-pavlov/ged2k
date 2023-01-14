@@ -92,6 +92,10 @@ E:
 				switch data := c.(type) {
 				case *proto.SearchResult:
 					fmt.Printf("session received search result size %d\n", data.Size())
+					for _, x := range data.Items {
+						a := proto.ToSearchItem(&x)
+						fmt.Println("File", a.Filename, "size", a.Filesize, "sources", a.Sources, "complete sources", a.CompleteSources)
+					}
 				case *proto.FoundFileSources:
 					fmt.Printf("session found file sources %d\n", data.Size())
 				default:
@@ -145,7 +149,6 @@ func (s *Session) receive(sc *SessionConnection) {
 }
 
 func (s *Session) accept(listener *net.Listener, register_connection chan *SessionConnection) {
-
 	fmt.Println("Session listener started")
 	for {
 		c, e := (*listener).Accept()
@@ -173,4 +176,8 @@ func (s *Session) DisconnectFromServer() {
 
 func (s *Session) Search(keyword string) {
 	go s.serverConnection.Search(keyword)
+}
+
+func (s *Session) GetServerList() {
+	go s.serverConnection.ServerList()
 }

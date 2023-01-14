@@ -554,3 +554,42 @@ func (sr SearchResult) Size() int {
 
 	return res
 }
+
+type SearchItem struct {
+	H               Hash
+	Point           Endpoint
+	Filename        string
+	Filesize        uint64
+	Sources         int
+	CompleteSources int
+	Bitrate         int
+	MediaLength     int
+	Codec           string
+}
+
+func ToSearchItem(up *UsualPacket) SearchItem {
+	res := SearchItem{H: up.H, Point: up.Point}
+	for _, x := range up.Properties {
+		switch x.Id {
+		case FT_FILENAME:
+			res.Filename = x.AsString()
+		case FT_FILESIZE:
+			if x.IsUint32() {
+				res.Filesize = uint64(x.AsUint32())
+			} else if x.IsUint64() {
+				res.Filesize = x.AsUint64()
+			}
+		case FT_SOURCES:
+			res.Sources = x.AsInt()
+		case FT_COMPLETE_SOURCES:
+			res.CompleteSources = x.AsInt()
+		case FT_MEDIA_BITRATE:
+			res.Bitrate = x.AsInt()
+		case FT_MEDIA_LENGTH:
+			res.MediaLength = x.AsInt()
+		case FT_MEDIA_CODEC:
+			res.Codec = x.AsString()
+		}
+	}
+	return res
+}

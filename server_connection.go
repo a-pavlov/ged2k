@@ -219,6 +219,16 @@ func (sc *ServerConnection) Search(s string) error {
 	return nil
 }
 
+func (sc *ServerConnection) ServerList() {
+	gsl := proto.GetServerList{}
+	sc.mutex.Lock()
+	defer sc.mutex.Unlock()
+	if sc.status == Connected {
+		sc.outgoingOrder = append(sc.outgoingOrder, &gsl)
+		go sc.Send()
+	}
+}
+
 func (sc *ServerConnection) Tick(t time.Time) {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
