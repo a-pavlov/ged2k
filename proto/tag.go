@@ -460,7 +460,7 @@ func (t *Tag) Get(sr *StateBuffer) *StateBuffer {
 	return sr
 }
 
-func (t *Tag) Put(sw *StateBuffer) *StateBuffer {
+func (t Tag) Put(sw *StateBuffer) *StateBuffer {
 	if sw.err != nil {
 		return sw
 	}
@@ -489,6 +489,34 @@ func (t *Tag) Put(sw *StateBuffer) *StateBuffer {
 		sw.err = errors.New("Tag Put unknown type " + fmt.Sprintf("%x", t.Type))
 	}
 	return sw
+}
+
+func (t Tag) Size() int {
+	res := 0
+	if t.Name == "" {
+		res += DataSize(t.Type) + DataSize(t.Id)
+	} else {
+		bc := []byte(t.Name)
+		res += DataSize(t.Type) + DataSize(uint16(len(t.Name))) + DataSize(bc)
+	}
+
+	switch {
+	case t.Type == TAGTYPE_UINT8 || t.Type == TAGTYPE_UINT16 ||
+		t.Type == TAGTYPE_UINT32 || t.Type == TAGTYPE_UINT64 ||
+		t.Type == TAGTYPE_FLOAT32 || t.Type == TAGTYPE_BOOL ||
+		t.Type == TAGTYPE_HASH16 ||
+		(t.Type >= TAGTYPE_STR1 && t.Type <= TAGTYPE_STR16):
+		res += DataSize(t.value)
+	case t.Type == TAGTYPE_STRING || t.Type == TAGTYPE_BOOLARRAY:
+		res += DataSize(uint16(len(t.value))) + DataSize(t.value)
+	case t.Type == TAGTYPE_BSOB:
+		res += DataSize(byte(len(t.value))) + DataSize(t.value)
+	case t.Type == TAGTYPE_BLOB:
+		res += DataSize(uint32(len(t.value))) + DataSize(t.value)
+	default:
+		res = -1 // raise exception
+	}
+	return res
 }
 
 func (t Tag) GetName() string {

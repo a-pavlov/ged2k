@@ -31,7 +31,7 @@ const GED2K_VERSION_TINY = 0
 
 type FoundFileSources struct {
 	H       Hash
-	Sources Collection
+	Sources []Endpoint
 }
 
 func (fs *FoundFileSources) Get(sb *StateBuffer) *StateBuffer {
@@ -39,10 +39,13 @@ func (fs *FoundFileSources) Get(sb *StateBuffer) *StateBuffer {
 	sz, e := sb.ReadUint8()
 	if e == nil {
 		for i := 0; i < int(sz); i++ {
-			fs.Sources = append(fs.Sources, &Endpoint{})
+			ep := Endpoint{}
+			sb.Read(&ep)
+			fs.Sources = append(fs.Sources, ep)
+			if sb.Error() != nil {
+				break
+			}
 		}
-
-		sb.Read(&fs.Sources)
 	}
 
 	return sb
@@ -51,6 +54,14 @@ func (fs *FoundFileSources) Get(sb *StateBuffer) *StateBuffer {
 func (fs *FoundFileSources) Put(sb *StateBuffer) *StateBuffer {
 	var sz uint8 = uint8(len(fs.Sources))
 	return sb.Write(fs.H).Write(sz).Write(fs.Sources)
+}
+
+func (fs FoundFileSources) Size() int {
+	res := DataSize(byte(len(fs.Sources))) + DataSize(fs.H)
+	for _, x := range fs.Sources {
+		res += DataSize(x)
+	}
+	return res
 }
 
 type LoginRequest UsualPacket
@@ -77,6 +88,10 @@ func (i IdChange) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(i.ClientId).Write(i.TcpFlags).Write(i.AuxPort)
 }
 
+func (i IdChange) Size() int {
+	return DataSize(i.AuxPort) + DataSize(i.ClientId) + DataSize(i.TcpFlags)
+}
+
 type Status struct {
 	UsersCount uint32
 	FilesCount uint32
@@ -88,4 +103,22 @@ func (s *Status) Get(sb *StateBuffer) *StateBuffer {
 
 func (s Status) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(s.UsersCount).Write(s.UsersCount)
+}
+
+func (s Status) Size() int {
+	return DataSize(s.UsersCount) + DataSize(s.FilesCount)
+}
+
+type GetServerList struct{}
+
+func (gl *GetServerList) Get(sb *StateBuffer) *StateBuffer {
+	return sb
+}
+
+func (gl GetServerList) Put(sb *StateBuffer) *StateBuffer {
+	return sb
+}
+
+func (gl GetServerList) Size() int {
+	return 0
 }

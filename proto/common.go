@@ -92,26 +92,15 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 		return sb
 	}
 
-	switch data := data.(type) {
-	case *Collection:
-		return data.Get(sb)
-	case *TagCollection:
-		return data.Get(sb)
-	case *Endpoint:
-		return data.Get(sb)
-	case *Tag:
-		return data.Get(sb)
-	case *PacketHeader:
-		return data.Get(sb)
-	case *UsualPacket:
-		return data.Get(sb)
-	case *ByteContainer:
-		return data.Get(sb)
-	default:
-		// do nothing
+	st, ok := data.(interface {
+		Get(sb *StateBuffer) *StateBuffer
+	})
+
+	if ok {
+		return st.Get(sb)
 	}
 
-	if n := intDataSize(data); n >= 0 {
+	if n := DataSize(data); n >= 0 {
 		if n+sb.pos > len(sb.Data) {
 			sb.err = io.EOF
 			return sb
@@ -142,10 +131,6 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 			*data = math.Float32frombits(binary.LittleEndian.Uint32(bs))
 		case *float64:
 			*data = math.Float64frombits(binary.LittleEndian.Uint64(bs))
-		case *Hash:
-			for i, x := range bs {
-				data[i] = x
-			}
 		case []bool:
 			for i, x := range bs { // Easier to loop over the input for 8-bit values.
 				data[i] = x != 0
@@ -202,9 +187,18 @@ func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
 	return sb
 }
 
-// intDataSize returns the size of the data required to represent the data when encoded.
+// DataSize returns the size of the data required to represent the data when encoded.
 // It returns zero if the type cannot be implemented by the fast path in Read or Write.
-func intDataSize(data interface{}) int {
+func DataSize(data interface{}) int {
+
+	st, ok := data.(interface {
+		Size() int
+	})
+
+	if ok {
+		return st.Size()
+	}
+
 	switch data := data.(type) {
 	case bool, int8, uint8, *bool, *int8, *uint8:
 		return 1
@@ -240,14 +234,8 @@ func intDataSize(data interface{}) int {
 		return 4 * len(data)
 	case []float64:
 		return 8 * len(data)
-	case Hash:
-		return 16
-	case *Hash:
-		return 16
-	case PacketHeader:
-		return 6
 	}
-	return 0
+	panic("Can not obtain size of type " + reflect.TypeOf(data).String())
 }
 
 func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
@@ -255,24 +243,14 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 		return sb
 	}
 
-	// check complex types first
-	switch v := data.(type) {
-	case Endpoint:
-		return v.Put(sb)
-	case Collection:
-		return v.Put(sb)
-	case TagCollection:
-		return v.Put(sb)
-	case Tag:
-		return v.Put(sb)
-	case UsualPacket:
-		return v.Put(sb)
-	case ByteContainer:
-		return v.Put(sb)
-	default:
+	st, ok := data.(interface {
+		Put(sb *StateBuffer) *StateBuffer
+	})
+	if ok {
+		return st.Put(sb)
 	}
 
-	n := intDataSize(data)
+	n := DataSize(data)
 
 	if sb.pos+n > len(sb.Data) {
 		sb.err = io.EOF
@@ -294,13 +272,9 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 		for i, x := range v {
 			sb.Data[sb.pos+i] = byte(x)
 		}
-	case Hash:
-		for i, x := range v {
-			sb.Data[sb.pos+i] = byte(x)
-		}
-	case *Hash:
-		for i, x := range v {
-			sb.Data[sb.pos+i] = byte(x)
+	case []interface{}:
+		for _, x := range v {
+			sb.Write(x)
 		}
 	default:
 		sb.err = errors.New("SB.write: invalid type " + reflect.TypeOf(data).String())
@@ -343,11 +317,11 @@ var LIBED2K = [16]byte{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x4C, 0xE9, 0x31, 0xB7, 0x3
 var EMULE = [16]byte{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x0E, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x6F, 0xC0}
 
 func (h *Hash) Get(sb *StateBuffer) *StateBuffer {
-	return sb.Read(h)
+	return sb.Read(h[:])
 }
 
 func (h Hash) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(h)
+	return sb.Write(h[:])
 }
 
 func (h Hash) Size() int {
@@ -368,7 +342,7 @@ func (i Endpoint) Put(sb *StateBuffer) *StateBuffer {
 }
 
 func (i Endpoint) Size() int {
-	return intDataSize(i.Ip) + intDataSize(i.Port)
+	return DataSize(i.Ip) + DataSize(i.Port)
 }
 
 func GetContainer(data []Serializable, sb *StateBuffer) {
@@ -400,19 +374,43 @@ func (c Collection) Put(sb *StateBuffer) *StateBuffer {
 }
 
 func (c *TagCollection) Get(sb *StateBuffer) *StateBuffer {
-	for i := 0; i < len(*c); i++ {
-		(*c)[i].Get(sb)
+	sz, err := sb.ReadUint32()
+	if err == nil {
+		if sz > MAX_ELEMS {
+			sb.err = fmt.Errorf("elements count greater than max elements %d", sz)
+			return sb
+		}
+
+		for i := 0; i < int(sz); i++ {
+			t := Tag{}
+			sb.Read(&t)
+			*c = append(*c, t)
+			if sb.err != nil {
+				break
+			}
+		}
 	}
 
 	return sb
 }
 
 func (c TagCollection) Put(sb *StateBuffer) *StateBuffer {
+	sb.Write(uint32(len(c)))
 	for i := 0; i < len(c); i++ {
 		c[i].Put(sb)
 	}
 
 	return sb
+}
+
+func (c TagCollection) Size() int {
+	res := DataSize(uint32(1))
+
+	for i := 0; i < len(c); i++ {
+		res += DataSize(c[i])
+	}
+
+	return res
 }
 
 type UsualPacket struct {
@@ -422,20 +420,15 @@ type UsualPacket struct {
 }
 
 func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
-	sb.Read(&up.H).Read(&up.Point)
-	sz, e := sb.ReadUint32()
-	if e == nil && sz < MAX_ELEMS {
-		for i := 0; i < int(sz); i++ {
-			up.Properties = append(up.Properties, Tag{})
-		}
-		sb.Read(&up.Properties)
-	}
-	return sb
+	return sb.Read(&up.H).Read(&up.Point).Read(&up.Properties)
 }
 
 func (up UsualPacket) Put(sb *StateBuffer) *StateBuffer {
-	sb.Write(up.H).Write(up.Point)
-	return sb.Write(uint32(len(up.Properties))).Write(up.Properties)
+	return sb.Write(up.H).Write(up.Point).Write(up.Properties)
+}
+
+func (up UsualPacket) Size() int {
+	return DataSize(up.H) + DataSize(up.Point) + DataSize(up.Properties)
 }
 
 type ByteContainer []byte
@@ -458,6 +451,10 @@ func (bc ByteContainer) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(uint16(len(bc))).Write([]byte(bc))
 }
 
+func (bc ByteContainer) Size() int {
+	return DataSize(uint16(1)) + DataSize([]byte(bc[:]))
+}
+
 type PacketHeader struct {
 	Protocol byte
 	Bytes    uint32
@@ -477,7 +474,7 @@ func (ph PacketHeader) IsEmpty() bool {
 }
 
 func (ph PacketHeader) Size() int {
-	return int(ph.Bytes)
+	return DataSize(ph.Protocol) + DataSize(ph.Bytes) + DataSize(ph.Packet)
 }
 
 func (ph *PacketHeader) Reset() {
@@ -523,11 +520,11 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 		return PacketHeader{}, data, fmt.Errorf("max packet size overflow %d", ph.Bytes)
 	}
 
-	if ph.Size() > len(pc.data) {
+	if int(ph.Bytes) > len(pc.data) {
 		// reallocate
 		newSize := len(pc.data) * 2
-		if ph.Size() > newSize {
-			newSize = ph.Size()
+		if int(ph.Bytes) > newSize {
+			newSize = int(ph.Bytes)
 		}
 
 		fmt.Println("reallocate", newSize)

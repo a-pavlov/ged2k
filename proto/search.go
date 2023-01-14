@@ -121,20 +121,53 @@ func (entry *NumericEntry) Get(sb *StateBuffer) *StateBuffer {
 	return sb
 }
 
+func (entry NumericEntry) Size() int {
+	res := 0
+	if entry.value < uint64(MaxUint32) {
+		res += DataSize(uint32(entry.value))
+	} else {
+		res += DataSize(entry.value)
+	}
+
+	return res + DataSize(entry.operator) + DataSize(entry.tag)
+}
+
 func (entry StringEntry) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(entry.value).Write(entry.tag)
+	if entry.tag != nil {
+		sb.Write(SEARCH_TYPE_STR_TAG)
+	} else {
+		sb.Write(SEARCH_TYPE_STR)
+	}
+
+	sb.Write(entry.value)
+	if entry.tag != nil {
+		sb.Write(entry.tag)
+	}
+
+	return sb
 }
 
 func (entry *StringEntry) Get(sb *StateBuffer) *StateBuffer {
 	return sb
 }
 
+func (entry StringEntry) Size() int {
+	if entry.tag != nil {
+		return DataSize(SEARCH_TYPE_STR_TAG) + DataSize(entry.value) + DataSize(entry.tag)
+	}
+	return DataSize(SEARCH_TYPE_STR) + DataSize(entry.value)
+}
+
 func (entry OperatorEntry) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(SEARCH_TYPE_BOOL).Write(byte(entry))
+	return sb.Write(SEARCH_TYPE_BOOL).Write(byte(0))
 }
 
 func (entry *OperatorEntry) Get(sb *StateBuffer) *StateBuffer {
 	return sb
+}
+
+func (entry OperatorEntry) Size() int {
+	return DataSize(SEARCH_TYPE_BOOL) + DataSize(byte(entry))
 }
 
 func (entry ParenEntry) Put(sb *StateBuffer) *StateBuffer {
@@ -143,6 +176,10 @@ func (entry ParenEntry) Put(sb *StateBuffer) *StateBuffer {
 
 func (entry *ParenEntry) Get(sb *StateBuffer) *StateBuffer {
 	panic("Requested get for parent entry")
+}
+
+func (entry ParenEntry) Size() uint {
+	panic("Requested size for ParenEntry")
 }
 
 func (o OperatorEntry) IsBoolean() bool {
@@ -349,8 +386,8 @@ func BuildEntries(minSize uint64,
 	return result, nil
 }
 
-func PackRequest(source []Serializable) ([]Serializable, error) {
-	result := make([]Serializable, 0)
+func PackRequest(source []Serializable) (SearchRequest, error) {
+	result := SearchRequest{}
 	operators_stack := make([]Serializable, 0)
 
 	for i := len(source) - 1; i >= 0; i-- {
@@ -424,6 +461,61 @@ func PackRequest(source []Serializable) ([]Serializable, error) {
 	return result, nil
 }
 
+type SearchRequest []Serializable
+
+func (sr SearchRequest) Put(sb *StateBuffer) *StateBuffer {
+	for _, s := range sr {
+		s.Put(sb)
+	}
+
+	return sb
+}
+
+func (sr *SearchRequest) Get(sb *StateBuffer) *StateBuffer {
+	panic("SearchRequest Get issued")
+}
+
+func (sr SearchRequest) Size() int {
+	res := 0
+	for _, s := range sr {
+		res += DataSize(s)
+	}
+
+	return res
+}
+
+type SearchMore struct{}
+
+func (sm SearchMore) Put(sb *StateBuffer) *StateBuffer {
+	return sb
+}
+
+func (sm *SearchMore) Get(sb *StateBuffer) *StateBuffer {
+	panic("SearchMore Get issued")
+}
+
+func (sm SearchMore) Size() int {
+	return 0
+}
+
+type GetFileSources struct {
+	H       Hash
+	LowPart uint32
+	HiPart  uint32
+}
+
+func (gfs GetFileSources) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(gfs.H).Write(gfs.LowPart).Write(gfs.HiPart)
+}
+
+func (gfs *GetFileSources) Get(sb *StateBuffer) *StateBuffer {
+	panic("GetFileSources Get issued")
+}
+
+func (gfs GetFileSources) Size() int {
+	return DataSize(gfs.H) + DataSize(gfs.LowPart) + DataSize(gfs.HiPart)
+}
+
 type SearchResult struct {
 	Items       []UsualPacket
 	MoreResults byte
@@ -452,4 +544,13 @@ func (sr *SearchResult) Get(sb *StateBuffer) *StateBuffer {
 
 func (sr SearchResult) Put(sb *StateBuffer) *StateBuffer {
 	panic("Search result put requested")
+}
+
+func (sr SearchResult) Size() int {
+	res := DataSize(sr.MoreResults)
+	for _, up := range sr.Items {
+		res += DataSize(up)
+	}
+
+	return res
 }

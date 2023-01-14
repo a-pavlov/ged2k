@@ -78,6 +78,10 @@ func Test_largeExpr(t *testing.T) {
 
 				}
 
+				if DataSize(entries) <= 0 {
+					t.Errorf("Search entries wrong size")
+				}
+
 				/*
 					assertTrue(sr.entry(0) instanceof BooleanEntry && ((BooleanEntry)sr.entry(0)).operator() == Operator.OPER_OR);
 					assertTrue(sr.entry(1) instanceof StringEntry && sr.entry(1).toString().compareTo("a") == 0);
@@ -151,5 +155,33 @@ func Test_searchRes(t *testing.T) {
 			t.Error("Endpoints reading error")
 		}
 
+	}
+}
+
+func Test_searchSimple(t *testing.T) {
+	parsed, err := BuildEntries(0, 0, 0, 0, "", "", "", 0, 0, "game")
+	if err != nil {
+		t.Errorf("Large expression building failed with %v", err)
+	} else {
+		if len(parsed) != 1 {
+			t.Errorf("Parsed elements count incorrect %d expected 1", len(parsed))
+		} else {
+			entries, err_p := PackRequest(parsed)
+			if err_p != nil {
+				t.Errorf("Error on pack request %v", err_p)
+			}
+
+			if len(entries) != 1 {
+				t.Errorf("Entries count is not 1: %d", len(entries))
+			} else {
+
+				// string entry no tag
+				l := DataSize(entries)
+				if l != 7 {
+					t.Errorf("Search request has incorrect size %d expected 7", l)
+				}
+			}
+
+		}
 	}
 }

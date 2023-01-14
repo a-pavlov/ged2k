@@ -5,6 +5,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/a-pavlov/ged2k/proto"
 )
 
 type SessionConnection struct {
@@ -14,12 +16,27 @@ type SessionConnection struct {
 }
 
 type Session struct {
+	configuration         Config
 	comm                  chan string
 	register_connection   chan *SessionConnection
 	unregister_connection chan *SessionConnection
+	server_packets        chan proto.Serializable
 	wg                    sync.WaitGroup
 	listener              net.Listener
 	connections           map[*SessionConnection]bool
+	serverConnection      ServerConnection
+}
+
+func CreateSession(config Config) *Session {
+	serverPackets := make(chan proto.Serializable)
+	return &Session{
+		configuration:         config,
+		comm:                  make(chan string),
+		register_connection:   make(chan *SessionConnection),
+		unregister_connection: make(chan *SessionConnection),
+		connections:           make(map[*SessionConnection]bool),
+		server_packets:        serverPackets,
+		serverConnection:      CreateServerConnection(serverPackets)}
 }
 
 func (s *Session) Tick() {
@@ -70,8 +87,21 @@ E:
 					delete(s.connections, conn)
 				}
 			}
+		case c, ok := <-s.server_packets:
+			if ok {
+				switch data := c.(type) {
+				case *proto.SearchResult:
+					fmt.Printf("session received search result size %d\n", data.Size())
+				case *proto.FoundFileSources:
+					fmt.Printf("session found file sources %d\n", data.Size())
+				default:
+					fmt.Println("session: unknown server packet received")
+				}
+			}
 		case <-tick:
 			fmt.Println("Tick")
+			currentTime := time.Now()
+			s.serverConnection.Tick(currentTime)
 		}
 	}
 
@@ -92,7 +122,9 @@ func (s *Session) Start() {
 }
 
 func (s *Session) Stop() {
+	fmt.Println("Session stop requested")
 	close(s.comm)
+	s.serverConnection.Stop()
 	s.wg.Wait()
 }
 
@@ -127,8 +159,18 @@ func (s *Session) accept(listener *net.Listener, register_connection chan *Sessi
 	}
 }
 
-func (s *Session) connect(address string, channel chan interface{}) {
-	//connection, err := net.Dial("tcp", address)
-	//if err != nil {
-	//}
+func (s *Session) ConnectoToServer(address string) {
+	if s.serverConnection.IsConnected() {
+		s.serverConnection.Stop()
+	}
+
+	go s.serverConnection.Start(address)
+}
+
+func (s *Session) DisconnectFromServer() {
+	go s.serverConnection.Stop()
+}
+
+func (s *Session) Search(keyword string) {
+	go s.serverConnection.Search(keyword)
 }

@@ -213,4 +213,9 @@ func Test_tagGenericCollection(t *testing.T) {
 		t.Errorf("Wrote bytes count incorrect %v", stateBuffer.Offset())
 	}
 
+	lenX := DataSize(x)
+	if lenX <= 0 {
+		t.Errorf("Wrong Tag length %d", lenX)
+	}
+
 }

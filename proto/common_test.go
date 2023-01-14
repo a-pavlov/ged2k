@@ -531,6 +531,7 @@ func Test_usualPacket(t *testing.T) {
 	buf := make([]byte, 100)
 	sb := StateBuffer{Data: buf}
 	sb.Write(hello)
+	wroteBytes := sb.Offset()
 	if sb.err != nil {
 		t.Errorf("Can not write hello %v", sb.Error())
 	} else {
@@ -548,6 +549,11 @@ func Test_usualPacket(t *testing.T) {
 				t.Errorf("Hello 2 hash incorrect %x", hello2.H)
 			}
 		}
+	}
+
+	l := DataSize(hello)
+	if l != wroteBytes {
+		t.Errorf("Usual packet length %d does not match bytes have written %d", l, wroteBytes)
 	}
 }
 
@@ -590,5 +596,18 @@ func Test_IdSoftReading(t *testing.T) {
 
 	if sb.Remain() != 0 {
 		t.Errorf("Remain incorrect %d expected 0", sb.Remain())
+	}
+
+	l := DataSize(id)
+	if l != 12 {
+		t.Errorf("Incorrect packet length %d", l)
+	}
+}
+
+func Test_CollectionSize(t *testing.T) {
+	data := []Endpoint{Endpoint{Ip: 1, Port: 2}, Endpoint{Ip: 3, Port: 4}}
+	fs := FoundFileSources{H: EMULE, Sources: data}
+	if DataSize(fs) != 16+1+12 {
+		t.Errorf("Size of collection with two endpoint is wrong %d expected 16+1+12", DataSize(data))
 	}
 }
