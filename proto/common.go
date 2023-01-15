@@ -10,6 +10,8 @@ import (
 	"io/ioutil"
 	"math"
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 const MAX_ELEMS uint32 = 1000
@@ -343,6 +345,36 @@ func (i Endpoint) Put(sb *StateBuffer) *StateBuffer {
 
 func (i Endpoint) Size() int {
 	return DataSize(i.Ip) + DataSize(i.Port)
+}
+
+func (i Endpoint) AsString() string {
+	return fmt.Sprintf("%d.%d.%d.%d:%d", i.Ip&0xff, (i.Ip>>8)&0xff, (i.Ip>>16)&0xff, (i.Ip>>24)&0xff, i.Port)
+}
+
+func FromString(s string) (Endpoint, error) {
+	parts := strings.Split(s, ":")
+
+	if len(parts) != 2 {
+		return Endpoint{}, fmt.Errorf("can not find ip-port separator :")
+	}
+
+	ips := strings.Split(parts[0], ".")
+
+	if len(ips) != 4 {
+		return Endpoint{}, fmt.Errorf("ip has no correct format")
+	}
+
+	i, err := strconv.Atoi(ips[0])
+	i_1, err_1 := strconv.Atoi(ips[1])
+	i_2, err_2 := strconv.Atoi(ips[2])
+	i_3, err_3 := strconv.Atoi(ips[3])
+	port, err_p := strconv.Atoi(parts[1])
+
+	if err != nil || err_1 != nil || err_2 != nil || err_3 != nil || err_p != nil {
+		return Endpoint{}, fmt.Errorf("no number found")
+	}
+
+	return Endpoint{Ip: uint32(i) | ((uint32(i_1) << 8) & 0xff00) | ((uint32(i_2) << 16) & 0xff0000) | ((uint32(i_3) << 24) & 0xff000000), Port: uint16(port)}, nil
 }
 
 func GetContainer(data []Serializable, sb *StateBuffer) {

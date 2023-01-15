@@ -611,3 +611,32 @@ func Test_CollectionSize(t *testing.T) {
 		t.Errorf("Size of collection with two endpoint is wrong %d expected 16+1+12", DataSize(data))
 	}
 }
+
+func Test_Endpoint2Str(t *testing.T) {
+	template := []string{"0.0.0.22:1024",
+		"0.0.0.16:3000",
+		"127.0.0.1:2048",
+		"196.127.10.1:30000",
+		"192.168.0.33:50000",
+		"255.255.255.255:60000",
+		"88.122.32.45:10000"}
+
+	ep1, _ := FromString("192.168.0.33:50000")
+	ep2, _ := FromString("255.255.255.255:60000")
+	ep3, _ := FromString("88.122.32.45:10000")
+
+	endpoints := []Endpoint{Endpoint{Ip: 0x16000000, Port: 1024},
+		Endpoint{Ip: 0x10000000, Port: 3000},
+		Endpoint{Ip: 0x0100007f, Port: 2048},
+		Endpoint{Ip: 0x010a7fc4, Port: 30000},
+		ep1,
+		ep2,
+		ep3}
+
+	for i := 0; i < len(template); i++ {
+		if template[i] != endpoints[i].AsString() {
+			t.Errorf("Endpoint to string %s does not match %s", endpoints[i].AsString(), template[i])
+		}
+	}
+
+}
