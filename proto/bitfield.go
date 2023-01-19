@@ -25,8 +25,10 @@ func (bf *BitField) Get(sb *StateBuffer) *StateBuffer {
 	sz, err := sb.ReadUint16()
 	if err == nil {
 		bf.bits = int(sz)
-		bf.bytes = make([]byte, BitsToBytes(int(sz)))
-		sb.Read(bf.bytes)
+		if bf.bits > 0 {
+			bf.bytes = make([]byte, BitsToBytes(int(sz)))
+			sb.Read(bf.bytes)
+		}
 	}
 
 	return sb
@@ -101,4 +103,46 @@ func (bf *BitField) ClearAll() {
 	for i := 0; i < len(bf.bytes); i++ {
 		bf.bytes[i] = 0x00
 	}
+}
+
+func (bf *BitField) Assign(b []byte, c int) {
+	bf.Resize(c)
+	copy(bf.bytes, b[:BitsToBytes(c)])
+	bf.ClearTrailingBits()
+}
+
+func (bf BitField) GetBit(index int) bool {
+	return (bf.bytes[index/8] & (0x80 >> (index & 7))) != 0
+}
+
+func (bf *BitField) ClearBit(index int) {
+	bf.bytes[index/8] &= ^(0x80 >> (index & 7))
+}
+
+func (bf *BitField) SetBit(index int) {
+	bf.bytes[index/8] |= (0x80 >> (index & 7))
+}
+
+func (bf BitField) Bits() int {
+	return bf.bits
+}
+
+func (bf BitField) Count() int {
+	// 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
+	// 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
+	num_bits := []byte{
+		0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4}
+
+	ret := 0
+	num_bytes := bf.bits / 8
+	for i := 0; i < num_bytes; i++ {
+		ret += int(num_bits[bf.bytes[i]&0xf]) + int(num_bits[bf.bytes[i]>>4])
+	}
+
+	rest := bf.bits - num_bytes*8
+	for i := 0; i < rest; i++ {
+		ret += int((bf.bytes[num_bytes] >> (7 - i)) & 1)
+	}
+
+	return ret
 }
