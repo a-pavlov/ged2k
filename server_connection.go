@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"sync"
 	"time"
 
@@ -66,8 +67,6 @@ func (sc *ServerConnection) Start(address string) {
 	var versionClient uint32 = (proto.GED2K_VERSION_MAJOR << 24) | (proto.GED2K_VERSION_MINOR << 17) | (proto.GED2K_VERSION_TINY << 10) | (1 << 7)
 	var capability uint32 = proto.CAPABLE_AUXPORT | proto.CAPABLE_NEWTAGS | proto.CAPABLE_UNICODE | proto.CAPABLE_LARGEFILES | proto.CAPABLE_ZLIB
 
-	fmt.Println("Version client", versionClient)
-
 	var hello proto.UsualPacket
 	hello.H = proto.EMULE
 	hello.Point = proto.Endpoint{Ip: 0, Port: 20033}
@@ -76,24 +75,27 @@ func (sc *ServerConnection) Start(address string) {
 	hello.Properties = append(hello.Properties, proto.CreateTag("ged2k", proto.CT_NAME, ""))
 	hello.Properties = append(hello.Properties, proto.CreateTag(versionClient, proto.CT_EMULE_VERSION, ""))
 
-	stateBuffer := proto.StateBuffer{Data: sc.buffer[proto.HEADER_SIZE:]}
-	stateBuffer.Write(hello)
-	if stateBuffer.Error() != nil {
-		fmt.Printf("Error on serialize hello %v\n", stateBuffer.Error())
-	}
+	//stateBuffer := proto.StateBuffer{Data: sc.buffer[proto.HEADER_SIZE:]}
+	//stateBuffer.Write(hello)
+	//if stateBuffer.Error() != nil {
+	//		fmt.Printf("Error on serialize hello %v\n", stateBuffer.Error())
+	//
 
-	ph := proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: uint32(stateBuffer.Offset() + 1), Packet: proto.OP_LOGINREQUEST}
-	ph.Write(sc.buffer)
+	//ph := proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: uint32(stateBuffer.Offset() + 1), Packet: proto.OP_LOGINREQUEST}
+	//ph.Write(sc.buffer)
 
-	fmt.Printf("PACKET %x\n", sc.buffer[:stateBuffer.Offset()+proto.HEADER_SIZE])
-	n, err := connection.Write(sc.buffer[:stateBuffer.Offset()+proto.HEADER_SIZE])
-	fmt.Printf("Bytes %d have been written\n", n)
+	//fmt.Printf("PACKET %x\n", sc.buffer[:stateBuffer.Offset()+proto.HEADER_SIZE])
+	//n, err := connection.Write(sc.buffer[:stateBuffer.Offset()+proto.HEADER_SIZE])
+	n, err := sc.SendPacket(&hello)
+
 	if err != nil {
 		fmt.Printf("Error write to socket %v\n", err)
 		sc.mutex.Lock()
 		sc.status = Disconnected
 		sc.mutex.Unlock()
 		return
+	} else {
+		fmt.Printf("Bytes %d have been written\n", n)
 	}
 
 	pc := proto.PacketCombiner{}
@@ -252,7 +254,7 @@ func (sc *ServerConnection) Send() {
 	}
 
 	if len(sc.outgoingOrder) > 0 {
-		_, err := Send(sc.connection, sc.outgoingOrder[0])
+		_, err := sc.SendPacket(sc.outgoingOrder[0])
 
 		if err != nil {
 			defer sc.Stop()
@@ -272,4 +274,41 @@ func (sc ServerConnection) IsConnected() bool {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
 	return sc.status == Connected
+}
+
+func (sc *ServerConnection) SendPacket(data proto.Serializable) (int, error) {
+	sz := proto.DataSize(data)
+	bytes := make([]byte, sz+proto.HEADER_SIZE)
+	stateBuffer := proto.StateBuffer{Data: bytes[proto.HEADER_SIZE:]}
+	data.Put(&stateBuffer)
+
+	if stateBuffer.Error() != nil {
+		fmt.Printf("Send error %v for %d bytes\n", stateBuffer.Error(), sz)
+		return 0, stateBuffer.Error()
+	}
+
+	var ph proto.PacketHeader
+	bytesCount := uint32(stateBuffer.Offset() + 1)
+	switch data.(type) {
+	case *proto.UsualPacket:
+		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_LOGINREQUEST}
+		fmt.Println("Login request", sz, "bytes")
+	case *proto.SearchRequest:
+		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_SEARCHREQUEST}
+		fmt.Printf("Search request %d bytes\n", sz)
+	case *proto.SearchMore:
+		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_QUERY_MORE_RESULT}
+		fmt.Printf("Search more result %d bytes\n", sz)
+	case *proto.GetFileSources:
+		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_GETSOURCES}
+		fmt.Printf("Get sources request %d bytes\n", sz)
+	case *proto.GetServerList:
+		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_GETSERVERLIST}
+		fmt.Printf("Server list request %d bytes\n", sz)
+	default:
+		panic("ServerConnection Send with unknown type " + reflect.TypeOf(data).String())
+	}
+
+	ph.Write(bytes)
+	return sc.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
 }

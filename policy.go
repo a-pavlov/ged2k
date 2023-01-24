@@ -183,7 +183,7 @@ func (policy *Policy) erasePeers() bool {
 func (policy *Policy) newConnectiion(pc *PeerConnection) bool {
 	policy.mutex.Lock()
 
-	indx := policy.GetPeerIndexByEndpoint(pc.Address)
+	indx := policy.GetPeerIndexByEndpoint(pc.Point)
 	if indx != -1 {
 		defer policy.mutex.Unlock()
 
@@ -196,7 +196,7 @@ func (policy *Policy) newConnectiion(pc *PeerConnection) bool {
 		return true
 	}
 
-	p := Peer{endpoint: pc.Address, peerConnection: pc}
+	p := Peer{endpoint: pc.Point, peerConnection: pc}
 	return policy.AddPeer(p)
 }
 
