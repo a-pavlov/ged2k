@@ -43,10 +43,41 @@ func (peerConnection *PeerConnection) Connect() {
 			// send hello answer
 			// send file request
 		case proto.OP_HELLOANSWER:
+			ha := proto.HelloAnswer{}
+			sb.Read(&ha)
+			if sb.Error() != nil {
+				return
+			} else {
+				h := proto.Hash{}
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &h)
+			}
+			// req filename
+
+		case proto.OP_REQUESTFILENAME:
+		case proto.OP_REQFILENAMEANSWER:
+			fa := proto.FileAnswer{}
+			sb.Read(&fa)
+			if sb.Error() != nil {
+				return
+			} else {
+				h := proto.Hash{}
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &h)
+			}
+		case proto.OP_CANCELTRANSFER:
+			// cancel transfer received
 			// sent OP_REQUESTFILENAME
 		case proto.OP_SETREQFILEID:
 			// got file status request
 		case proto.OP_FILESTATUS:
+			fs := proto.FileStatusAnswer{}
+			sb.Read(&fs)
+			if sb.Error() != nil {
+				return
+			}
+
+			h := proto.Hash{}
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &h)
+
 			// got file status ansfer
 		case proto.OP_FILEREQANSNOFIL:
 			// no file status received
@@ -54,9 +85,32 @@ func (peerConnection *PeerConnection) Connect() {
 			// hash set request received
 		case proto.OP_HASHSETANSWER:
 			// got hash set answer
+			h := proto.Hash{}
+			sb.Read(&h)
+			count, _ := sb.ReadUint16()
+			if sb.Error() != nil {
+				return
+			}
+
+			if uint32(count) > proto.MAX_ELEMS {
+				//sb.err = fmt.Errorf("elements count greater than max elements %d", sz)
+				return
+			}
+
+			for i := 0; i < int(count); i++ {
+				hash := proto.Hash{}
+				sb.Read(&hash)
+
+				if sb.Error() != nil {
+					break
+				}
+			}
+
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &h)
 		case proto.OP_STARTUPLOADREQ:
 			// receive start upload request
 		case proto.OP_ACCEPTUPLOADREQ:
+
 			// got accept upload
 		case proto.OP_QUEUERANKING:
 			// got queue ranking
@@ -80,4 +134,28 @@ func (peerConnection *PeerConnection) Connect() {
 			fmt.Printf("Receive unknown protocol:%x packet: %x bytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
 		}
 	}
+}
+
+func (pc *PeerConnection) SendPacket(protocol byte, packet byte, data proto.Serializable) (int, error) {
+	if data == nil {
+		bytes := make([]byte, proto.HEADER_SIZE)
+		ph := proto.PacketHeader{Protocol: protocol, Packet: packet, Bytes: 1}
+		ph.Write(bytes)
+		return pc.connection.Write(bytes[:proto.HEADER_SIZE])
+	}
+
+	sz := proto.DataSize(data)
+	bytes := make([]byte, sz+proto.HEADER_SIZE)
+	stateBuffer := proto.StateBuffer{Data: bytes[proto.HEADER_SIZE:]}
+	data.Put(&stateBuffer)
+
+	if stateBuffer.Error() != nil {
+		fmt.Printf("Send error %v for %d bytes\n", stateBuffer.Error(), sz)
+		return 0, stateBuffer.Error()
+	}
+
+	bytesCount := uint32(stateBuffer.Offset() + 1)
+	ph := proto.PacketHeader{Protocol: protocol, Packet: packet, Bytes: bytesCount}
+	ph.Write(bytes)
+	return pc.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
 }

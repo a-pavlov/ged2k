@@ -266,6 +266,8 @@ func (sb *StateBuffer) Write(data interface{}) *StateBuffer {
 		binary.LittleEndian.PutUint16(sb.Data[sb.pos:], v)
 	case uint32:
 		binary.LittleEndian.PutUint32(sb.Data[sb.pos:], v)
+	case uint64:
+		binary.LittleEndian.PutUint64(sb.Data[sb.pos:], v)
 	case *[]byte:
 		for i, x := range *v {
 			sb.Data[sb.pos+i] = byte(x)
