@@ -130,3 +130,24 @@ const OP_CHATCAPTCHARES byte = 0xA6
 const ED2K_MAX_PACKET_SIZE uint32 = 125000
 
 const HEADER_SIZE int = 6
+
+const SO_EMULE int = 0
+const SO_CDONKEY int = 1
+const SO_LXMULE int = 2
+const SO_AMULE int = 3
+const SO_SHAREAZA int = 4
+const SO_EMULEPLUS int = 5
+const SO_HYDRANODE int = 6
+const SO_NEW2_MLDONKEY int = 0x0a
+const SO_LPHANT int = 0x14
+const SO_NEW2_SHAREAZA int = 0x28
+const SO_EDONKEYHYBRID int = 0x32
+const SO_EDONKEY int = 0x33
+const SO_MLDONKEY int = 0x34
+const SO_OLDEMULE int = 0x35
+const SO_UNKNOWN int = 0x36
+const SO_NEW_SHAREAZA int = 0x44
+const SO_NEW_MLDONKEY int = 0x98
+const SO_LIBED2K int = 0x99
+const SO_QMULE int = 0xA0
+const SO_COMPAT_UNK int = 0xFF

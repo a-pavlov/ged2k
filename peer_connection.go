@@ -8,21 +8,37 @@ import (
 )
 
 type PeerConnection struct {
-	Point      proto.Endpoint
+	endpoint   proto.Endpoint
 	connection net.Conn
+	transfer   *Transfer
 }
 
-func (peerConnection *PeerConnection) Connect() {
+func (peerConnection *PeerConnection) Connect(endpoint proto.Endpoint) {
+	if peerConnection.connection != nil {
+		panic("peer connection alread has connection on Connect")
+	}
 
+	if peerConnection.transfer == nil {
+		panic("transfer is null on Connect")
+	}
+
+	connection, err := net.Dial("tcp", endpoint.AsString())
+	if err != nil {
+		return
+	}
+
+	peerConnection.connection = connection
+	peerConnection.endpoint = endpoint
+
+	// write hello packet to peer
+
+	// continue receive data
+	peerConnection.Start()
+}
+
+func (peerConnection *PeerConnection) Start() {
 	if peerConnection.connection == nil {
-		connection, err := net.Dial("tcp", peerConnection.Point.AsString())
-		if err != nil {
-			fmt.Println("Connect error", err)
-			return
-		}
-
-		peerConnection.connection = connection
-		// write hello
+		panic("peer connection connection is nil on Start")
 	}
 
 	pc := proto.PacketCombiner{}

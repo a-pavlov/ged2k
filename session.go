@@ -25,6 +25,7 @@ type Session struct {
 	listener              net.Listener
 	connections           map[*SessionConnection]bool
 	serverConnection      ServerConnection
+	ClientId              uint32
 }
 
 func CreateSession(config Config) *Session {
@@ -180,4 +181,38 @@ func (s *Session) Search(keyword string) {
 
 func (s *Session) GetServerList() {
 	go s.serverConnection.ServerList()
+}
+
+func (s *Session) CreateHelloAnswer() proto.HelloAnswer {
+	hello := proto.HelloAnswer{}
+	hello.H = s.configuration.UserAgent
+	hello.Point.Ip = s.ClientId
+	hello.Point.Port = s.configuration.ListenPort
+
+	hello.Properties = append(hello.Properties, proto.CreateTag(s.configuration.ClientName, proto.CT_NAME, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(s.configuration.ModName, proto.CT_MOD_VERSION, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(s.configuration.AppVersion, proto.CT_VERSION, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(0, proto.CT_EMULE_UDPPORTS, ""))
+	// do not send CT_EM_VERSION since it will activate secure identification we are not support
+
+	mo := proto.MiscOptions{}
+	mo.UnicodeSupport = 1
+	mo.DataCompVer = 0        // support data compression
+	mo.NoViewSharedFiles = 1  // temp value
+	mo.SourceExchange1Ver = 0 // SOURCE_EXCHG_LEVEL - important value
+
+	mo2 := proto.MiscOptions2(0)
+	mo2.SetCaptcha()
+	mo2.SetLargeFiles()
+	mo2.SetSourceExt2()
+	version := makeFullED2KVersion(uint32(proto.SO_AMULE), s.configuration.ModMajorVersion, s.configuration.ModMinorVersion, s.configuration.ModBuildVersion)
+
+	hello.Properties = append(hello.Properties, proto.CreateTag(version, proto.CT_EMULE_VERSION, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(mo.AsUint32(), proto.CT_EMULE_MISCOPTIONS1, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(mo2, proto.CT_EMULE_MISCOPTIONS2, ""))
+	return hello
+}
+
+func makeFullED2KVersion(clientId uint32, a uint32, b uint32, c uint32) uint32 {
+	return (clientId << 24) | (a << 17) | (b << 10) | (c << 7)
 }

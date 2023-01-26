@@ -12,6 +12,7 @@ type Transfer struct {
 	session            *Session
 	hashSet            []proto.Hash
 	needSaveResumeData bool
+	H                  proto.Hash
 }
 
 func (t *Transfer) IsPaused() bool {

@@ -10,7 +10,7 @@ import (
 func main() {
 	fmt.Println("Hello ged2k")
 	reader := bufio.NewReader(os.Stdin)
-	cfg := Config{Port: 30000, Name: "TestGed2k"}
+	cfg := Config{ListenPort: 30000, Name: "TestGed2k"}
 	s := CreateSession(cfg)
 	s.Start()
 
