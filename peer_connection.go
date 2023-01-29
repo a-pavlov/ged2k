@@ -11,6 +11,7 @@ type PeerConnection struct {
 	endpoint   proto.Endpoint
 	connection net.Conn
 	transfer   *Transfer
+	session    *Session
 }
 
 func (peerConnection *PeerConnection) Connect(endpoint proto.Endpoint) {
@@ -31,6 +32,8 @@ func (peerConnection *PeerConnection) Connect(endpoint proto.Endpoint) {
 	peerConnection.endpoint = endpoint
 
 	// write hello packet to peer
+	ha := peerConnection.session.CreateHelloAnswer()
+	peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HELLO, &ha)
 
 	// continue receive data
 	peerConnection.Start()
@@ -47,7 +50,7 @@ func (peerConnection *PeerConnection) Start() {
 		ph, bytes, error := pc.Read(peerConnection.connection)
 
 		if error != nil {
-			fmt.Printf("Can not read bytes from server %v", error)
+			fmt.Printf("Can not read bytes from peer %v\n", error)
 			break
 		}
 
@@ -55,12 +58,19 @@ func (peerConnection *PeerConnection) Start() {
 
 		switch ph.Packet {
 		case proto.OP_HELLO:
-			sb.ReadUint8()
+			hello := proto.HelloAnswer{}
+			sb.Read(&hello)
+			if sb.Error() != nil {
+				return
+			}
+			// obtain peer information
+			helloAnswer := peerConnection.session.CreateHelloAnswer()
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HELLOANSWER, &helloAnswer)
 			// send hello answer
 			// send file request
 		case proto.OP_HELLOANSWER:
-			ha := proto.HelloAnswer{}
-			sb.Read(&ha)
+			helloAnswer := proto.HelloAnswer{}
+			sb.Read(&helloAnswer)
 			if sb.Error() != nil {
 				return
 			} else {
@@ -68,6 +78,7 @@ func (peerConnection *PeerConnection) Start() {
 				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &h)
 			}
 			// req filename
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.H)
 
 		case proto.OP_REQUESTFILENAME:
 		case proto.OP_REQFILENAMEANSWER:
