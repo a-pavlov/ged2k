@@ -17,6 +17,10 @@ const PEER_SRC_SERVER byte = 0x2
 const PEER_SRC_DHT byte = 0x4
 const PEER_SRC_RESUME_DATA byte = 0x8
 
+const PEER_SPEED_SLOW int = 0
+const PEER_SPEED_MEDIUM int = 1
+const PEER_SPEED_FAST int = 2
+
 type Peer struct {
 	SourceFlag     byte
 	LastConnected  time.Time
@@ -25,6 +29,7 @@ type Peer struct {
 	Connectable    bool
 	peerConnection *PeerConnection
 	endpoint       proto.Endpoint
+	Speed          int
 }
 
 func (p Peer) IsConnectCandidate() bool {
@@ -123,7 +128,7 @@ func (policy *Policy) GetPeerIndexByEndpoint(ep proto.Endpoint) int {
 }
 
 // costly
-func remove(s []Peer, i int) []Peer {
+func removePeer(s []Peer, i int) []Peer {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]
 }
@@ -164,7 +169,7 @@ func (policy *Policy) erasePeers() bool {
 					eraseCandidate--
 				}
 
-				policy.peers = remove(policy.peers, current)
+				policy.peers = removePeer(policy.peers, current)
 			} else {
 				eraseCandidate = current
 			}
@@ -174,16 +179,16 @@ func (policy *Policy) erasePeers() bool {
 	}
 
 	if eraseCandidate > -1 {
-		policy.peers = remove(policy.peers, eraseCandidate)
+		policy.peers = removePeer(policy.peers, eraseCandidate)
 	}
 
 	return count != len(policy.peers)
 }
 
-func (policy *Policy) newConnectiion(pc *PeerConnection) bool {
+func (policy *Policy) newConnection(connection *PeerConnection) bool {
 	policy.mutex.Lock()
 
-	indx := policy.GetPeerIndexByEndpoint(pc.endpoint)
+	indx := policy.GetPeerIndexByEndpoint(connection.peer.endpoint)
 	if indx != -1 {
 		defer policy.mutex.Unlock()
 
@@ -192,11 +197,11 @@ func (policy *Policy) newConnectiion(pc *PeerConnection) bool {
 			return false
 		}
 
-		p.peerConnection = pc
+		p.peerConnection = connection
 		return true
 	}
 
-	p := Peer{endpoint: pc.endpoint, peerConnection: pc}
+	p := Peer{endpoint: connection.peer.endpoint, peerConnection: connection}
 	return policy.AddPeer(p)
 }
 
@@ -262,7 +267,7 @@ func (policy *Policy) FindConnectCandidate(t time.Time) Peer {
 						candidate--
 					}
 
-					policy.peers = remove(policy.peers, current)
+					policy.peers = removePeer(policy.peers, current)
 					continue
 				} else {
 					eraseCandidate = current
@@ -295,7 +300,7 @@ func (policy *Policy) FindConnectCandidate(t time.Time) Peer {
 			candidate--
 		}
 
-		policy.peers = remove(policy.peers, eraseCandidate)
+		policy.peers = removePeer(policy.peers, eraseCandidate)
 	}
 
 	if candidate == -1 {

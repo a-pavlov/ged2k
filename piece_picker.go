@@ -1,6 +1,9 @@
-package data
+package main
 
-import "sync"
+import (
+	"github.com/a-pavlov/ged2k/data"
+	"sync"
+)
 
 const PIECE_STATE_NONE byte = 0
 const PIECE_STATE_DOWNLOADING byte = 1
@@ -24,7 +27,7 @@ func (pp PiecePicker) BlocksInPiece(pieceIndex int) int {
 		return pp.BlocksInLastPiece
 	}
 
-	return BLOCKS_PER_PIECE
+	return data.BLOCKS_PER_PIECE
 }
 
 /*
@@ -103,7 +106,7 @@ func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer Peer) []PieceBlo
 	res := pp.addDownloadingBlocks(requiredBlocksCount, peer, false)
 
 	// for medium and fast peers in end game more re-request blocks from already downloading pieces
-	if peer.speed != PEER_SPEED_SLOW && (len(res) < requiredBlocksCount) && pp.isEndGame() {
+	if peer.Speed != PEER_SPEED_SLOW && (len(res) < requiredBlocksCount) && pp.isEndGame() {
 		res = append(res, pp.addDownloadingBlocks(requiredBlocksCount-len(res), peer, true)...)
 	}
 
