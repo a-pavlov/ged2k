@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/a-pavlov/ged2k/data"
 	"sync"
 )
@@ -102,7 +103,6 @@ func (pp *PiecePicker) piecesCount() (int, int, int) {
 
 func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer Peer) []PieceBlock {
 	pp.mutex.Lock()
-	defer pp.mutex.Unlock()
 	res := pp.addDownloadingBlocks(requiredBlocksCount, peer, false)
 
 	// for medium and fast peers in end game more re-request blocks from already downloading pieces
@@ -111,7 +111,11 @@ func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer Peer) []PieceBlo
 	}
 
 	if len(res) < requiredBlocksCount && pp.сhooseNextPiece() {
-		res = append(pp.PickPieces(requiredBlocksCount-len(res), peer))
+		fmt.Printf("Required block count %d\n", requiredBlocksCount-len(res))
+		pp.mutex.Unlock()
+		res = append(res, pp.PickPieces(requiredBlocksCount-len(res), peer)...)
+	} else {
+		pp.mutex.Unlock()
 	}
 
 	return res

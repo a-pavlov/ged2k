@@ -379,6 +379,15 @@ func FromString(s string) (Endpoint, error) {
 	return Endpoint{Ip: uint32(i) | ((uint32(i_1) << 8) & 0xff00) | ((uint32(i_2) << 16) & 0xff0000) | ((uint32(i_3) << 24) & 0xff000000), Port: uint16(port)}, nil
 }
 
+func EndpointFromString(s string) Endpoint {
+	p, e := FromString(s)
+	if e != nil {
+		return Endpoint{}
+	}
+
+	return p
+}
+
 func GetContainer(data []Serializable, sb *StateBuffer) {
 	for _, x := range data {
 		x.Get(sb)
