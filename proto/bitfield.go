@@ -22,8 +22,8 @@ func Min(a int, b int) int {
 }
 
 func (bf *BitField) Get(sb *StateBuffer) *StateBuffer {
-	sz, err := sb.ReadUint16()
-	if err == nil {
+	sz := sb.ReadUint16()
+	if sb.Error() == nil {
 		bf.bits = int(sz)
 		if bf.bits > 0 {
 			bf.bytes = make([]byte, BitsToBytes(int(sz)))

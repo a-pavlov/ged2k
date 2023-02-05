@@ -87,10 +87,10 @@ type RequestParts32 struct {
 func (rp *RequestParts32) Get(sb *StateBuffer) *StateBuffer {
 	sb.Read(&rp.H)
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
-		rp.BeginOffset[i], _ = sb.ReadUint32()
+		rp.BeginOffset[i] = sb.ReadUint32()
 	}
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
-		rp.EndOffset[i], _ = sb.ReadUint32()
+		rp.EndOffset[i] = sb.ReadUint32()
 	}
 	return sb
 }
@@ -119,10 +119,10 @@ type RequestParts64 struct {
 func (rp *RequestParts64) Get(sb *StateBuffer) *StateBuffer {
 	sb.Read(&rp.H)
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
-		rp.BeginOffset[i], _ = sb.ReadUint64()
+		rp.BeginOffset[i] = sb.ReadUint64()
 	}
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
-		rp.EndOffset[i], _ = sb.ReadUint64()
+		rp.EndOffset[i] = sb.ReadUint64()
 	}
 	return sb
 }
@@ -216,4 +216,72 @@ func (mo *MiscOptions2) SetExtMultipacket() {
 
 func (mo *MiscOptions2) SetLargeFiles() {
 	*mo |= 1 << LARGE_FILE_OFFSET
+}
+
+type SendingPart struct {
+	H        Hash
+	Begin    uint64
+	End      uint64
+	Extended bool
+}
+
+func (sp *SendingPart) Get(sb *StateBuffer) *StateBuffer {
+	sb.Read(&sp.H)
+	if sp.Extended {
+		return sb.Read(&sp.Begin).Read(&sp.End)
+	}
+
+	sp.Begin = uint64(sb.ReadUint32())
+	sp.End = uint64(sb.ReadUint32())
+	return sb
+}
+
+func (sp *SendingPart) Put(sb *StateBuffer) *StateBuffer {
+	sb.Write(sp.H)
+	if sp.Extended {
+		return sb.Write(sp.Begin).Write(sp.End)
+	}
+
+	begin := uint32(sp.Begin)
+	end := uint32(sp.End)
+	return sb.Write(begin).Write(end)
+}
+
+func (sp SendingPart) Size() int {
+	size := DataSize(sp.Begin)
+	if sp.Extended {
+		size *= 2
+	}
+
+	return size + DataSize(sp.H)
+}
+
+type CompressedPart struct {
+	H                    Hash
+	Offset               uint64
+	CompressedDataLength uint32
+	Extended             bool
+}
+
+func (cp *CompressedPart) Get(sb *StateBuffer) *StateBuffer {
+	sb.Read(&cp.H)
+	if !cp.Extended {
+		cp.Offset = uint64(sb.ReadUint32())
+	} else {
+		sb.Read(&cp.Offset)
+	}
+
+	return sb.Read(&cp.CompressedDataLength)
+}
+
+func (cp *CompressedPart) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(cp.H).Write(uint32(cp.Offset)).Write(cp.CompressedDataLength)
+}
+
+func (cp CompressedPart) Size() int {
+	size := DataSize(uint32(0))
+	if cp.Extended {
+		size = DataSize(cp.Offset)
+	}
+	return size + DataSize(cp.H) + DataSize(cp.CompressedDataLength)
 }

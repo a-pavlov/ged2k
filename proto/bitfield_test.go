@@ -65,9 +65,9 @@ func Test_writing(t *testing.T) {
 		t.Errorf("Error write BitField %v", sb.Error())
 	} else {
 		sbR := StateBuffer{Data: res[2:]}
-		val, err := sbR.ReadUint32()
-		if err != nil {
-			t.Errorf("Unable to read uint32 from res buffer %v", err)
+		val := sbR.ReadUint32()
+		if sbR.Error() != nil {
+			t.Errorf("Unable to read uint32 from res buffer %v", sbR.Error())
 		} else {
 			if val != uint32(0xf00a0708) {
 				t.Errorf("Write incorrect bytes from BitField: %x", val)

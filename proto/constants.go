@@ -127,7 +127,7 @@ const OP_MULTIPACKET_EXT byte = 0xA4
 const OP_CHATCAPTCHAREQ byte = 0xA5
 const OP_CHATCAPTCHARES byte = 0xA6
 
-const ED2K_MAX_PACKET_SIZE uint32 = 125000
+const ED2K_MAX_PACKET_SIZE int = 125000
 
 const HEADER_SIZE int = 6
 

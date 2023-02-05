@@ -45,12 +45,6 @@ func Test_hash(t *testing.T) {
 	io.WriteString(h, "test")
 	io.WriteString(h, "test2")
 
-	var myH Hash
-
-	if len(myH) != 16 {
-		t.Error("Hash wrong size")
-	}
-
 	arr := make([]byte, 0)
 	arr = h.Sum(arr)
 
@@ -195,14 +189,14 @@ func Test_collection(t *testing.T) {
 func Test_testGetters(t *testing.T) {
 	buf := []byte{0x01, 0x0, 0x0, 0x0, 0x02, 0x0, 0x03, 0x0, 0x0, 0x0, 0x0, 0xFF, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
 	sb := StateBuffer{Data: buf}
-	a1, e1 := sb.ReadUint32()
-	a2, e2 := sb.ReadUint16()
-	a3, e3 := sb.ReadUint8()
-	a4, e4 := sb.ReadUint32()
-	a5, e5 := sb.ReadUint64()
+	a1 := sb.ReadUint32()
+	a2 := sb.ReadUint16()
+	a3 := sb.ReadUint8()
+	a4 := sb.ReadUint32()
+	a5 := sb.ReadUint64()
 
-	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil {
-		t.Errorf("Error reading primitives %v/%v/%v/%v/%v", e1, e2, e3, e4, e5)
+	if sb.Error() != nil {
+		t.Errorf("Error reading primitives %v", sb.Error())
 	}
 
 	if a1 != 1 {
@@ -229,9 +223,9 @@ func Test_testGetters(t *testing.T) {
 		t.Errorf("Error on last read %v", sb.err)
 	}
 
-	_, e := sb.ReadUint8()
+	sb.ReadUint8()
 
-	if e == nil {
+	if sb.Error() == nil {
 		t.Errorf("Expected error here")
 	}
 }

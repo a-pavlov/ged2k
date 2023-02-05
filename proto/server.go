@@ -36,8 +36,8 @@ type FoundFileSources struct {
 
 func (fs *FoundFileSources) Get(sb *StateBuffer) *StateBuffer {
 	sb.Read(&fs.H)
-	sz, e := sb.ReadUint8()
-	if e == nil {
+	sz := sb.ReadUint8()
+	if sb.Error() == nil {
 		for i := 0; i < int(sz); i++ {
 			ep := Endpoint{}
 			sb.Read(&ep)

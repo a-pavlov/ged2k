@@ -33,60 +33,64 @@ type StateBuffer struct {
 	pos  int
 }
 
-func (sb *StateBuffer) ReadUint8() (uint8, error) {
+func (sb *StateBuffer) ReadUint8() uint8 {
 	if sb.err != nil {
-		return 0x0, sb.err
+		return 0x0
 	}
 
 	if sb.pos+1 < len(sb.Data) {
 		res := sb.Data[sb.pos]
 		sb.pos++
-		return res, nil
+		return res
 	}
 
-	return 0x0, io.EOF
+	sb.err = io.EOF
+	return 0x0
 }
 
-func (sb *StateBuffer) ReadUint16() (uint16, error) {
+func (sb *StateBuffer) ReadUint16() uint16 {
 	if sb.err != nil {
-		return 0x0, sb.err
+		return 0x0
 	}
 
 	if sb.pos+2 <= len(sb.Data) {
 		res := binary.LittleEndian.Uint16(sb.Data[sb.pos:])
 		sb.pos = sb.pos + 2
-		return res, nil
+		return res
 	}
 
-	return 0x0, io.EOF
+	sb.err = io.EOF
+	return 0x0
 }
 
-func (sb *StateBuffer) ReadUint32() (uint32, error) {
+func (sb *StateBuffer) ReadUint32() uint32 {
 	if sb.err != nil {
-		return 0x0, sb.err
+		return 0x0
 	}
 
 	if sb.pos+4 <= len(sb.Data) {
 		res := binary.LittleEndian.Uint32(sb.Data[sb.pos:])
 		sb.pos = sb.pos + 4
-		return res, nil
+		return res
 	}
 
-	return 0x0, io.EOF
+	sb.err = io.EOF
+	return 0x0
 }
 
-func (sb *StateBuffer) ReadUint64() (uint64, error) {
+func (sb *StateBuffer) ReadUint64() uint64 {
 	if sb.err != nil {
-		return 0x0, sb.err
+		return 0x0
 	}
 
 	if sb.pos+8 <= len(sb.Data) {
 		res := binary.LittleEndian.Uint64(sb.Data[sb.pos:])
 		sb.pos = sb.pos + 8
-		return res, nil
+		return res
 	}
 
-	return 0x0, io.EOF
+	sb.err = io.EOF
+	return 0x0
 }
 
 func (sb *StateBuffer) Read(data interface{}) *StateBuffer {
@@ -417,8 +421,8 @@ func (c Collection) Put(sb *StateBuffer) *StateBuffer {
 }
 
 func (c *TagCollection) Get(sb *StateBuffer) *StateBuffer {
-	sz, err := sb.ReadUint32()
-	if err == nil {
+	sz := sb.ReadUint32()
+	if sb.Error() == nil {
 		if sz > MAX_ELEMS {
 			sb.err = fmt.Errorf("elements count greater than max elements %d", sz)
 			return sb
@@ -477,10 +481,9 @@ func (up UsualPacket) Size() int {
 type ByteContainer []byte
 
 func (bc *ByteContainer) Get(sb *StateBuffer) *StateBuffer {
-	var len uint16
-	sb.Read(&len)
+	length := sb.ReadUint16()
 	if sb.err == nil {
-		data := make([]byte, int(len))
+		data := make([]byte, int(length))
 		sb.Read(data)
 		if sb.err == nil {
 			*bc = data
@@ -559,15 +562,29 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 
 	fmt.Printf("Packet header %x/%d/%x\n", ph.Protocol, ph.Bytes, ph.Packet)
 
-	if ph.Bytes > ED2K_MAX_PACKET_SIZE {
+	bytesToRead := int(ph.Bytes)
+	switch {
+	case ph.Protocol == OP_EDONKEYPROT && ph.Packet == OP_SENDINGPART:
+		bytesToRead = SendingPart{Extended: false}.Size()
+	case ph.Protocol == OP_EMULEPROT && ph.Packet == OP_SENDINGPART_I64:
+		bytesToRead = SendingPart{Extended: true}.Size()
+	case ph.Protocol == OP_EMULEPROT && ph.Packet == OP_COMPRESSEDPART:
+		bytesToRead = CompressedPart{Extended: false}.Size()
+	case ph.Protocol == OP_EMULEPROT && ph.Packet == OP_COMPRESSEDPART_I64:
+		bytesToRead = CompressedPart{Extended: true}.Size()
+	default:
+		bytesToRead = bytesToRead - 1
+	}
+
+	if bytesToRead > ED2K_MAX_PACKET_SIZE {
 		return PacketHeader{}, data, fmt.Errorf("max packet size overflow %d", ph.Bytes)
 	}
 
-	if int(ph.Bytes) > len(pc.data) {
+	if bytesToRead > len(pc.data) {
 		// reallocate
 		newSize := len(pc.data) * 2
-		if int(ph.Bytes) > newSize {
-			newSize = int(ph.Bytes)
+		if bytesToRead > newSize {
+			newSize = bytesToRead
 		}
 
 		fmt.Println("reallocate", newSize)
@@ -576,8 +593,8 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 		pc.data = buf
 	}
 
-	if ph.Bytes > 1 {
-		_, err = ReadTo(reader, pc.data[:ph.Bytes-1])
+	if bytesToRead > 0 {
+		_, err = ReadTo(reader, pc.data[:bytesToRead])
 		if err != nil {
 			return ph, data, err
 		}
@@ -600,7 +617,7 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 		return ph, unzipped, nil
 	}
 
-	return ph, pc.data[:ph.Bytes-1], nil
+	return ph, pc.data[:bytesToRead], nil
 }
 
 func ReadTo(r io.Reader, buffer []byte) ([]byte, error) {

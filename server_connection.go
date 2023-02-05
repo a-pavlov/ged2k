@@ -100,10 +100,10 @@ func (sc *ServerConnection) Start(address string) {
 
 	pc := proto.PacketCombiner{}
 	for {
-		ph, bytes, error := pc.Read(connection)
+		ph, bytes, err := pc.Read(connection)
 
-		if error != nil {
-			fmt.Printf("Can not read bytes from server %v", error)
+		if err != nil {
+			fmt.Printf("Can not read bytes from server %v", err)
 			break
 		}
 
@@ -111,8 +111,8 @@ func (sc *ServerConnection) Start(address string) {
 
 		switch ph.Packet {
 		case proto.OP_SERVERLIST:
-			elems, err := sb.ReadUint8()
-			if err == nil && elems < 100 {
+			elems := sb.ReadUint8()
+			if sb.Error() == nil && elems < 100 {
 				c := proto.Collection{}
 				for i := 0; i < int(elems); i++ {
 					c = append(c, &proto.Endpoint{})
@@ -264,13 +264,13 @@ func (sc *ServerConnection) Send() {
 	}
 }
 
-func (sc ServerConnection) Status() int {
+func (sc *ServerConnection) Status() int {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
 	return sc.status
 }
 
-func (sc ServerConnection) IsConnected() bool {
+func (sc *ServerConnection) IsConnected() bool {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
 	return sc.status == Connected

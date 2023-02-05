@@ -13,7 +13,7 @@ type Block struct {
 
 type PieceBlock struct {
 	pieceIndex int
-	pieceBlock int
+	blockIndex int
 }
 
 type DownloadingPiece struct {
@@ -45,7 +45,7 @@ func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer Peer, endGam
 
 	for i := 0; i < len(dp.blocks) && len(res) < requiredBlocksCount; i++ {
 		if dp.blocks[i].blockState == BLOCK_STATE_NONE {
-			res = append(res, PieceBlock{pieceIndex: dp.pieceIndex, pieceBlock: i})
+			res = append(res, PieceBlock{pieceIndex: dp.pieceIndex, blockIndex: i})
 			dp.blocks[i].blockState = BLOCK_STATE_REQUESTED
 			dp.blocks[i].lastDownloader = peer
 			continue
@@ -56,7 +56,7 @@ func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer Peer, endGam
 			if dp.blocks[i].downloadersCount < 2 && dp.blocks[i].lastDownloader.Speed < peer.Speed && peer != dp.blocks[i].lastDownloader {
 				dp.blocks[i].blockState = BLOCK_STATE_REQUESTED
 				dp.blocks[i].lastDownloader = peer
-				res = append(res, PieceBlock{pieceIndex: dp.pieceIndex, pieceBlock: i})
+				res = append(res, PieceBlock{pieceIndex: dp.pieceIndex, blockIndex: i})
 			}
 		}
 	}

@@ -2,16 +2,30 @@ package main
 
 import (
 	"fmt"
+	"github.com/a-pavlov/ged2k/data"
 	"net"
 
 	"github.com/a-pavlov/ged2k/proto"
 )
+
+type PendingBlock struct {
+	pieceIndex int
+	blockIndex int
+	data       []byte
+}
 
 type PeerConnection struct {
 	connection net.Conn
 	transfer   *Transfer
 	session    *Session
 	peer       Peer
+
+	recvPieceIndex    int
+	recvStart         uint64
+	recvLength        uint64
+	recvReqCompressed bool
+	recvPos           uint64
+	downloadQueue     []PendingBlock
 }
 
 func (connection *PeerConnection) Connect() {
@@ -44,19 +58,25 @@ func (connection *PeerConnection) Start() {
 	}
 
 	pc := proto.PacketCombiner{}
+	blocks := []PendingBlock{}
+	buffers := [][]byte{make([]byte, 100), make([]byte, 100)}
+
+	if len(buffers) != 2 || len(blocks) != 1 {
+
+	}
 
 	for {
-		ph, bytes, error := pc.Read(connection.connection)
+		ph, bytes, err := pc.Read(connection.connection)
 
-		if error != nil {
-			fmt.Printf("Can not read bytes from peer %v\n", error)
+		if err != nil {
+			fmt.Printf("Can not read bytes from peer %v\n", err)
 			break
 		}
 
 		sb := proto.StateBuffer{Data: bytes}
 
-		switch ph.Packet {
-		case proto.OP_HELLO:
+		switch {
+		case ph.Packet == proto.OP_HELLO:
 			hello := proto.HelloAnswer{}
 			sb.Read(&hello)
 			if sb.Error() != nil {
@@ -67,7 +87,7 @@ func (connection *PeerConnection) Start() {
 			connection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HELLOANSWER, &helloAnswer)
 			// send hello answer
 			// send file request
-		case proto.OP_HELLOANSWER:
+		case ph.Packet == proto.OP_HELLOANSWER:
 			helloAnswer := proto.HelloAnswer{}
 			sb.Read(&helloAnswer)
 			if sb.Error() != nil {
@@ -79,8 +99,8 @@ func (connection *PeerConnection) Start() {
 			// req filename
 			connection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &connection.transfer.H)
 
-		case proto.OP_REQUESTFILENAME:
-		case proto.OP_REQFILENAMEANSWER:
+		case ph.Packet == proto.OP_REQUESTFILENAME:
+		case ph.Packet == proto.OP_REQFILENAMEANSWER:
 			fa := proto.FileAnswer{}
 			sb.Read(&fa)
 			if sb.Error() != nil {
@@ -89,12 +109,12 @@ func (connection *PeerConnection) Start() {
 				h := proto.Hash{}
 				connection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &h)
 			}
-		case proto.OP_CANCELTRANSFER:
+		case ph.Packet == proto.OP_CANCELTRANSFER:
 			// cancel transfer received
 			// sent OP_REQUESTFILENAME
-		case proto.OP_SETREQFILEID:
+		case ph.Packet == proto.OP_SETREQFILEID:
 			// got file status request
-		case proto.OP_FILESTATUS:
+		case ph.Packet == proto.OP_FILESTATUS:
 			fs := proto.FileStatusAnswer{}
 			sb.Read(&fs)
 			if sb.Error() != nil {
@@ -105,15 +125,15 @@ func (connection *PeerConnection) Start() {
 			connection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &h)
 
 			// got file status ansfer
-		case proto.OP_FILEREQANSNOFIL:
+		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
-		case proto.OP_HASHSETREQUEST:
+		case ph.Packet == proto.OP_HASHSETREQUEST:
 			// hash set request received
-		case proto.OP_HASHSETANSWER:
+		case ph.Packet == proto.OP_HASHSETANSWER:
 			// got hash set answer
 			h := proto.Hash{}
 			sb.Read(&h)
-			count, _ := sb.ReadUint16()
+			count := sb.ReadUint16()
 			if sb.Error() != nil {
 				return
 			}
@@ -133,28 +153,38 @@ func (connection *PeerConnection) Start() {
 			}
 
 			connection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &h)
-		case proto.OP_STARTUPLOADREQ:
+		case ph.Packet == proto.OP_STARTUPLOADREQ:
 			// receive start upload request
-		case proto.OP_ACCEPTUPLOADREQ:
+		case ph.Packet == proto.OP_ACCEPTUPLOADREQ:
 
 			// got accept upload
-		case proto.OP_QUEUERANKING:
+		case ph.Packet == proto.OP_QUEUERANKING:
 			// got queue ranking
-		case proto.OP_OUTOFPARTREQS:
+		case ph.Packet == proto.OP_OUTOFPARTREQS:
 			// got out of parts
-		case proto.OP_REQUESTPARTS:
+		case ph.Packet == proto.OP_REQUESTPARTS:
 			// got 32 request parts request
-		case proto.OP_REQUESTPARTS_I64:
+		case ph.Packet == proto.OP_REQUESTPARTS_I64:
 			// got 64 request parts request
-		case proto.OP_SENDINGPART:
+		case ph.Packet == proto.OP_SENDINGPART || ph.Packet == proto.OP_SENDINGPART_I64:
+			sp := proto.SendingPart{Extended: ph.Packet == proto.OP_SENDINGPART_I64}
+			sb.Read(&sp)
+			if sb.Error() != nil {
+				// raise error
+			}
+
 			// got 32 sending part response
-		case proto.OP_SENDINGPART_I64:
 			// got 64 sending part response
-		case proto.OP_COMPRESSEDPART:
+		case ph.Packet == proto.OP_COMPRESSEDPART || ph.Packet == proto.OP_COMPRESSEDPART_I64:
 			// got 32 compressed part response
-		case proto.OP_COMPRESSEDPART_I64:
 			// got 64 compressed part response
-		case proto.OP_END_OF_DOWNLOAD:
+			cp := proto.CompressedPart{Extended: ph.Packet == proto.OP_COMPRESSEDPART_I64}
+			sb.Read(&cp)
+			if sb.Error() != nil {
+				// raise error
+			}
+
+		case ph.Packet == proto.OP_END_OF_DOWNLOAD:
 			// got end of download response
 		default:
 			fmt.Printf("Receive unknown protocol:%x packet: %x bytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
@@ -184,4 +214,29 @@ func (connection *PeerConnection) SendPacket(protocol byte, packet byte, data pr
 	ph := proto.PacketHeader{Protocol: protocol, Packet: packet, Bytes: bytesCount}
 	ph.Write(bytes)
 	return connection.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
+}
+
+func (conneection *PeerConnection) receiveCompressedData(offset uint64, compressedLength uint64, payloadSize int) {
+
+}
+
+func (connection *PeerConnection) receiveData(begin uint64, end uint64, compressed bool) {
+	connection.recvPieceIndex, connection.recvStart, connection.recvLength = data.BeginEnd2StartLength(begin, end)
+	connection.recvPos = 0
+	blockIndex := int(connection.recvStart / uint64(data.BLOCK_SIZE))
+	block := connection.getDownloadingBlock(connection.recvPieceIndex, blockIndex)
+	if block != nil {
+		//inBlockOffset := connection.recvStart % uint64(data.BLOCK_SIZE)
+		// generate slice here
+	}
+}
+
+func (connection *PeerConnection) getDownloadingBlock(pieceIndex int, blockIndex int) *PendingBlock {
+	for i, x := range connection.downloadQueue {
+		if x.pieceIndex == pieceIndex && x.blockIndex == blockIndex {
+			return &connection.downloadQueue[i]
+		}
+	}
+
+	return nil
 }

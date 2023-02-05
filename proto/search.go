@@ -522,8 +522,8 @@ type SearchResult struct {
 }
 
 func (sr *SearchResult) Get(sb *StateBuffer) *StateBuffer {
-	count, err := sb.ReadUint32()
-	if err == nil {
+	count := sb.ReadUint32()
+	if sb.Error() == nil {
 		if count < 1024 {
 			sr.Items = make([]UsualPacket, count)
 			for i := 0; i < int(count); i++ {
@@ -534,7 +534,7 @@ func (sr *SearchResult) Get(sb *StateBuffer) *StateBuffer {
 			}
 
 			if sb.Error() == nil {
-				sr.MoreResults, _ = sb.ReadUint8()
+				sr.MoreResults = sb.ReadUint8()
 			}
 		}
 	}

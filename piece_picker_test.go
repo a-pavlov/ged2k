@@ -12,7 +12,7 @@ func TestPiecePicker_PickPiecesTrivial(t *testing.T) {
 	for i := 0; i < 101; i++ {
 		blocks := pp.PickPieces(3, peer)
 		//for _, x := range blocks {
-		//	fmt.Printf("piece: %d block: %d ", x.pieceIndex, x.pieceBlock)
+		//	fmt.Printf("piece: %d block: %d ", x.pieceIndex, x.blockIndex)
 		//}
 
 		fmt.Println("")

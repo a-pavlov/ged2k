@@ -58,3 +58,7 @@ func Sub(seg1 Range, seg2 Range) []Range {
 
 	return res
 }
+
+func (region Region) Begin() uint64 {
+	return region.Segments[0].Begin
+}
