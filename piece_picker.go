@@ -53,8 +53,8 @@ func (pp PiecePicker) getDownloadingPiece(pieceIndex int) *DownloadingPiece {
 	return nil
 }
 
-func (pp *PiecePicker) addDownloadingBlocks(requiredBlocksCount int, peer Peer, endGame bool) []PieceBlock {
-	res := []PieceBlock{}
+func (pp *PiecePicker) addDownloadingBlocks(requiredBlocksCount int, peer Peer, endGame bool) []data.PieceBlock {
+	res := []data.PieceBlock{}
 	for _, dp := range pp.downloadingPieces {
 		res = append(res, dp.PickBlock(requiredBlocksCount-len(res), peer, endGame)...)
 		if len(res) == requiredBlocksCount {
@@ -70,7 +70,7 @@ func (pp *PiecePicker) isEndGame() bool {
 	return len(pp.pieceStatus)-have-len(pp.downloadingPieces) == 0 || len(pp.downloadingPieces) > END_GAME_DOWN_PIECES_LIMIT
 }
 
-func (pp *PiecePicker) сhooseNextPiece() bool {
+func (pp *PiecePicker) chooseNextPiece() bool {
 	for i, x := range pp.pieceStatus {
 		if x == PIECE_STATE_NONE {
 			dp := CreateDownloadingPiece(i, pp.BlocksInPiece(i))
@@ -101,7 +101,7 @@ func (pp *PiecePicker) piecesCount() (int, int, int) {
 	return none, downloading, have
 }
 
-func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer Peer) []PieceBlock {
+func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer Peer) []data.PieceBlock {
 	pp.mutex.Lock()
 	res := pp.addDownloadingBlocks(requiredBlocksCount, peer, false)
 
@@ -110,7 +110,7 @@ func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer Peer) []PieceBlo
 		res = append(res, pp.addDownloadingBlocks(requiredBlocksCount-len(res), peer, true)...)
 	}
 
-	if len(res) < requiredBlocksCount && pp.сhooseNextPiece() {
+	if len(res) < requiredBlocksCount && pp.chooseNextPiece() {
 		fmt.Printf("Required block count %d\n", requiredBlocksCount-len(res))
 		pp.mutex.Unlock()
 		res = append(res, pp.PickPieces(requiredBlocksCount-len(res), peer)...)

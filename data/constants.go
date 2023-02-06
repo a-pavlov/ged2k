@@ -8,15 +8,8 @@ const HIGHEST_LOWID_ED2K int = 16777216
 const REQUEST_QUEUE_SIZE int = 3
 const PARTS_IN_REQUEST int = 3
 
-func BeginEnd2StartLength(begin uint64, end uint64) (int, uint64, uint64) {
-	pieceIndex := int(begin / PIECE_SIZE_UINT64)
-	start := begin % PIECE_SIZE_UINT64
-	length := end - begin
-	if length > PIECE_SIZE_UINT64 {
-		panic("chank size greater than PIECE_SIZE")
-	}
-
-	return pieceIndex, start, length
+func InBlockOffset(begin uint64, end uint64) (int, int) {
+	return int(begin % PIECE_SIZE_UINT64), int(end - begin)
 }
 
 func Offset2PieceBlock(offset uint64) (int, int) {

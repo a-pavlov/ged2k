@@ -34,6 +34,10 @@ func (region *Region) Sub(seg Range) {
 	region.Segments = res
 }
 
+func (region *Region) IsEmpty() bool {
+	return len(region.Segments) == 0
+}
+
 func Sub(seg1 Range, seg2 Range) []Range {
 	res := []Range{}
 
@@ -61,4 +65,17 @@ func Sub(seg1 Range, seg2 Range) []Range {
 
 func (region Region) Begin() uint64 {
 	return region.Segments[0].Begin
+}
+
+type PieceBlock struct {
+	PieceIndex int
+	BlockIndex int
+}
+
+func FromOffset(offset uint64) PieceBlock {
+	return PieceBlock{PieceIndex: int(offset / PIECE_SIZE_UINT64), BlockIndex: int(offset%PIECE_SIZE_UINT64) / BLOCK_SIZE}
+}
+
+func (pb PieceBlock) Start() uint64 {
+	return uint64(pb.PieceIndex)*PIECE_SIZE_UINT64 + uint64(pb.BlockIndex)*uint64(BLOCK_SIZE)
 }

@@ -1,17 +1,65 @@
 package main
 
 import (
+	"bytes"
+	"compress/zlib"
 	"fmt"
 	"github.com/a-pavlov/ged2k/data"
-	"net"
-
 	"github.com/a-pavlov/ged2k/proto"
+	"io"
+	"net"
 )
 
 type PendingBlock struct {
-	pieceIndex int
-	blockIndex int
-	data       []byte
+	block  data.PieceBlock
+	data   []byte
+	region data.Region
+}
+
+func removePendingBlock(s []*PendingBlock, i int) []*PendingBlock {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
+}
+
+func (pb *PendingBlock) Receive(reader io.Reader, begin uint64, end uint64) (int, error) {
+	inBlockOffset, chunkLen := data.InBlockOffset(begin, end)
+	receivedBytes := 0
+	for receivedBytes < chunkLen {
+		n, err := reader.Read(pb.data[inBlockOffset+receivedBytes : inBlockOffset+chunkLen])
+		if err != nil {
+			if err == io.EOF {
+				receivedBytes += n
+				return receivedBytes, nil
+			}
+
+			return receivedBytes, err
+		}
+		receivedBytes += n
+	}
+
+	pb.region.Sub(data.Range{Begin: begin, End: end})
+	return receivedBytes, nil
+}
+
+func (pb *PendingBlock) ReceiveToEnd(reader io.Reader, begin uint64) (int, error) {
+	pieceBlock := data.FromOffset(begin)
+	inBlockOffset, _ := data.InBlockOffset(begin, begin+1)
+	// end offset is piece block start + block size - in block offset
+	return pb.Receive(reader, begin, pieceBlock.Start()+uint64(data.BLOCK_SIZE)-uint64(inBlockOffset))
+}
+
+func Receive(reader io.Reader, data []byte) error {
+	receivedBytes := 0
+	for receivedBytes < len(data) {
+		n, err := reader.Read(data[receivedBytes:])
+		if err != nil {
+			return err
+		}
+
+		receivedBytes += n
+	}
+
+	return nil
 }
 
 type PeerConnection struct {
@@ -58,22 +106,19 @@ func (connection *PeerConnection) Start() {
 	}
 
 	pc := proto.PacketCombiner{}
-	blocks := []PendingBlock{}
-	buffers := [][]byte{make([]byte, 100), make([]byte, 100)}
+	var requestedBlocks []*PendingBlock
 
-	if len(buffers) != 2 || len(blocks) != 1 {
-
-	}
+	//buffers := [][]byte{make([]byte, 100), make([]byte, 100)}
 
 	for {
-		ph, bytes, err := pc.Read(connection.connection)
+		ph, packetBytes, err := pc.Read(connection.connection)
 
 		if err != nil {
-			fmt.Printf("Can not read bytes from peer %v\n", err)
+			fmt.Printf("Can not read packetBytes from peer %v\n", err)
 			break
 		}
 
-		sb := proto.StateBuffer{Data: bytes}
+		sb := proto.StateBuffer{Data: packetBytes}
 
 		switch {
 		case ph.Packet == proto.OP_HELLO:
@@ -173,6 +218,29 @@ func (connection *PeerConnection) Start() {
 				// raise error
 			}
 
+			block := data.FromOffset(sp.Begin)
+
+			for i, x := range requestedBlocks {
+				if x.block == block {
+					if x.data != nil {
+						_, err := x.Receive(connection.connection, sp.Begin, sp.End)
+						if err != nil {
+							// raise error and close connection
+						}
+
+						if x.region.IsEmpty() {
+							removePendingBlock(requestedBlocks, i)
+							// pass received data to storage
+						}
+					}
+				}
+			}
+
+			// all blocks completed
+			if len(requestedBlocks) == 0 {
+				// start new request
+			}
+
 			// got 32 sending part response
 			// got 64 sending part response
 		case ph.Packet == proto.OP_COMPRESSEDPART || ph.Packet == proto.OP_COMPRESSEDPART_I64:
@@ -184,10 +252,35 @@ func (connection *PeerConnection) Start() {
 				// raise error
 			}
 
+			block := data.FromOffset(cp.Offset)
+			for _, x := range requestedBlocks {
+				if x.block == block {
+					compressedData := make([]byte, cp.CompressedDataLength)
+					err := Receive(connection.connection, compressedData)
+					if err != nil {
+						// close connection and exit
+					}
+
+					b := bytes.NewReader(compressedData)
+					z, err := zlib.NewReader(b)
+					if err != nil {
+						return
+					}
+
+					defer z.Close()
+
+					_, err = x.ReceiveToEnd(z, cp.Offset)
+					if err != nil {
+						// close connection
+					}
+
+				}
+			}
+
 		case ph.Packet == proto.OP_END_OF_DOWNLOAD:
 			// got end of download response
 		default:
-			fmt.Printf("Receive unknown protocol:%x packet: %x bytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
+			fmt.Printf("Receive unknown protocol:%x packet: %x packetBytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
 		}
 	}
 }
@@ -221,22 +314,12 @@ func (conneection *PeerConnection) receiveCompressedData(offset uint64, compress
 }
 
 func (connection *PeerConnection) receiveData(begin uint64, end uint64, compressed bool) {
-	connection.recvPieceIndex, connection.recvStart, connection.recvLength = data.BeginEnd2StartLength(begin, end)
-	connection.recvPos = 0
-	blockIndex := int(connection.recvStart / uint64(data.BLOCK_SIZE))
-	block := connection.getDownloadingBlock(connection.recvPieceIndex, blockIndex)
-	if block != nil {
-		//inBlockOffset := connection.recvStart % uint64(data.BLOCK_SIZE)
-		// generate slice here
-	}
-}
-
-func (connection *PeerConnection) getDownloadingBlock(pieceIndex int, blockIndex int) *PendingBlock {
-	for i, x := range connection.downloadQueue {
-		if x.pieceIndex == pieceIndex && x.blockIndex == blockIndex {
-			return &connection.downloadQueue[i]
-		}
-	}
-
-	return nil
+	//connection.recvPieceIndex, connection.recvStart, connection.recvLength = data.BeginEnd2StartLength(begin, end)
+	//connection.recvPos = 0
+	//blockIndex := int(connection.recvStart / uint64(data.BLOCK_SIZE))
+	//block := connection.getDownloadingBlock(connection.recvPieceIndex, blockIndex)
+	//if block != nil {
+	//inBlockOffset := connection.recvStart % uint64(data.BLOCK_SIZE)
+	// generate slice here
+	//}
 }
