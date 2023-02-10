@@ -67,6 +67,7 @@ type PeerConnection struct {
 	transfer   *Transfer
 	session    *Session
 	peer       Peer
+	endpoint   proto.Endpoint
 
 	recvPieceIndex    int
 	recvStart         uint64
@@ -74,6 +75,8 @@ type PeerConnection struct {
 	recvReqCompressed bool
 	recvPos           uint64
 	downloadQueue     []PendingBlock
+	closeChan         chan *PeerConnection
+	lastError         error
 }
 
 func (connection *PeerConnection) Connect() {
@@ -108,13 +111,11 @@ func (connection *PeerConnection) Start() {
 	pc := proto.PacketCombiner{}
 	var requestedBlocks []*PendingBlock
 
-	//buffers := [][]byte{make([]byte, 100), make([]byte, 100)}
-
 	for {
 		ph, packetBytes, err := pc.Read(connection.connection)
 
 		if err != nil {
-			fmt.Printf("Can not read packetBytes from peer %v\n", err)
+			connection.lastError = err
 			break
 		}
 
@@ -125,7 +126,8 @@ func (connection *PeerConnection) Start() {
 			hello := proto.HelloAnswer{}
 			sb.Read(&hello)
 			if sb.Error() != nil {
-				return
+				connection.lastError = sb.Error()
+				break
 			}
 			// obtain peer information
 			helloAnswer := connection.session.CreateHelloAnswer()
@@ -136,7 +138,8 @@ func (connection *PeerConnection) Start() {
 			helloAnswer := proto.HelloAnswer{}
 			sb.Read(&helloAnswer)
 			if sb.Error() != nil {
-				return
+				connection.lastError = sb.Error()
+				break
 			} else {
 				h := proto.Hash{}
 				connection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &h)
@@ -149,7 +152,8 @@ func (connection *PeerConnection) Start() {
 			fa := proto.FileAnswer{}
 			sb.Read(&fa)
 			if sb.Error() != nil {
-				return
+				connection.lastError = sb.Error()
+				break
 			} else {
 				h := proto.Hash{}
 				connection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &h)
@@ -163,7 +167,8 @@ func (connection *PeerConnection) Start() {
 			fs := proto.FileStatusAnswer{}
 			sb.Read(&fs)
 			if sb.Error() != nil {
-				return
+				connection.lastError = sb.Error()
+				break
 			}
 
 			h := proto.Hash{}
@@ -180,7 +185,8 @@ func (connection *PeerConnection) Start() {
 			sb.Read(&h)
 			count := sb.ReadUint16()
 			if sb.Error() != nil {
-				return
+				connection.lastError = sb.Error()
+				break
 			}
 
 			if uint32(count) > proto.MAX_ELEMS {
@@ -193,6 +199,7 @@ func (connection *PeerConnection) Start() {
 				sb.Read(&hash)
 
 				if sb.Error() != nil {
+					connection.lastError = sb.Error()
 					break
 				}
 			}
@@ -215,7 +222,8 @@ func (connection *PeerConnection) Start() {
 			sp := proto.SendingPart{Extended: ph.Packet == proto.OP_SENDINGPART_I64}
 			sb.Read(&sp)
 			if sb.Error() != nil {
-				// raise error
+				connection.lastError = sb.Error()
+				break
 			}
 
 			block := data.FromOffset(sp.Begin)
@@ -249,7 +257,8 @@ func (connection *PeerConnection) Start() {
 			cp := proto.CompressedPart{Extended: ph.Packet == proto.OP_COMPRESSEDPART_I64}
 			sb.Read(&cp)
 			if sb.Error() != nil {
-				// raise error
+				connection.lastError = sb.Error()
+				break
 			}
 
 			block := data.FromOffset(cp.Offset)
@@ -271,7 +280,7 @@ func (connection *PeerConnection) Start() {
 
 					_, err = x.ReceiveToEnd(z, cp.Offset)
 					if err != nil {
-						// close connection
+						connection.lastError = err
 					}
 
 				}
@@ -282,6 +291,10 @@ func (connection *PeerConnection) Start() {
 		default:
 			fmt.Printf("Receive unknown protocol:%x packet: %x packetBytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
 		}
+	}
+
+	if connection.closeChan != nil {
+		connection.closeChan <- connection
 	}
 }
 

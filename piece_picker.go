@@ -163,6 +163,25 @@ func (pp *PiecePicker) RemoveDownloadingPiece(pieceStatus byte, pieceIndex int) 
 	return false
 }
 
+func (pp *PiecePicker) PiecesCount() int {
+	pp.mutex.Lock()
+	defer pp.mutex.Unlock()
+	return len(pp.pieceStatus)
+}
+
+func (pp *PiecePicker) NumHave() int {
+	pp.mutex.Lock()
+	defer pp.mutex.Unlock()
+	res := 0
+	for _, x := range pp.pieceStatus {
+		if x == PIECE_STATE_HAVE {
+			res++
+		}
+	}
+
+	return res
+}
+
 func remove(s []*DownloadingPiece, i int) []*DownloadingPiece {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]

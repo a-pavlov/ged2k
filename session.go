@@ -16,28 +16,25 @@ type SessionConnection struct {
 }
 
 type Session struct {
-	configuration         Config
-	comm                  chan string
-	register_connection   chan *SessionConnection
-	unregister_connection chan *SessionConnection
-	server_packets        chan proto.Serializable
-	wg                    sync.WaitGroup
-	listener              net.Listener
-	connections           map[*SessionConnection]bool
-	serverConnection      ServerConnection
-	ClientId              uint32
+	configuration    Config
+	comm             chan string
+	server_packets   chan proto.Serializable
+	wg               sync.WaitGroup
+	listener         net.Listener
+	connectionsMutex sync.Mutex
+	connections      map[proto.Endpoint]*PeerConnection
+	serverConnection ServerConnection
+	ClientId         uint32
 }
 
 func CreateSession(config Config) *Session {
 	serverPackets := make(chan proto.Serializable)
 	return &Session{
-		configuration:         config,
-		comm:                  make(chan string),
-		register_connection:   make(chan *SessionConnection),
-		unregister_connection: make(chan *SessionConnection),
-		connections:           make(map[*SessionConnection]bool),
-		server_packets:        serverPackets,
-		serverConnection:      CreateServerConnection(serverPackets)}
+		configuration:    config,
+		comm:             make(chan string),
+		connections:      make(map[proto.Endpoint]*PeerConnection),
+		server_packets:   serverPackets,
+		serverConnection: CreateServerConnection(serverPackets)}
 }
 
 func (s *Session) Tick() {
@@ -53,10 +50,9 @@ func (s *Session) Tick() {
 		// can not listen
 
 	} else {
-		go s.accept(&s.listener, s.register_connection)
+		go s.accept(&s.listener)
 	}
 
-E:
 	for execute {
 		select {
 		case cmd, ok := <-s.comm:
@@ -69,23 +65,6 @@ E:
 					fmt.Println("Hello !!!")
 				default:
 					fmt.Printf("Unknown command %s\n", cmd)
-				}
-			}
-		case c, ok := <-s.register_connection:
-			if ok {
-				fmt.Printf("Incoming connection %v\n", c)
-				s.connections[c] = true
-				go s.receive(c)
-			} else {
-				// need channel replace or null
-				fmt.Println("Listener failed, need channel replace")
-				break E
-			}
-		case conn, ok := <-s.unregister_connection:
-			if ok {
-				if s.connections[conn] {
-					fmt.Println("Connection closed")
-					delete(s.connections, conn)
 				}
 			}
 		case c, ok := <-s.server_packets:
@@ -115,9 +94,9 @@ E:
 		fmt.Printf("Listener stop error %v\n", e)
 	}
 
-	for k, _ := range s.connections {
-		k.conn.Close()
-	}
+	//for k, _ := range s.connections {
+	//	k.conn.Close()
+	//}
 
 	fmt.Println("Session closed")
 }
@@ -133,32 +112,17 @@ func (s *Session) Stop() {
 	s.wg.Wait()
 }
 
-func (s *Session) receive(sc *SessionConnection) {
-	for {
-		message := make([]byte, 4096)
-		length, err := sc.conn.Read(message)
-		if err != nil {
-			s.unregister_connection <- sc
-			sc.conn.Close()
-			break
-		}
-
-		if length > 0 {
-			fmt.Println("RECEIVED: " + string(message))
-		}
-	}
-}
-
-func (s *Session) accept(listener *net.Listener, register_connection chan *SessionConnection) {
+func (s *Session) accept(listener *net.Listener) {
 	fmt.Println("Session listener started")
 	for {
-		c, e := (*listener).Accept()
+		_, e := (*listener).Accept()
 		if e != nil {
 			fmt.Printf("Accepting error %v\n", e)
-			close(register_connection)
 			break
 		} else {
-			register_connection <- &SessionConnection{conn: c, err: e}
+			s.connectionsMutex.Lock()
+			defer s.connectionsMutex.Unlock()
+			//register_connection <- &SessionConnection{conn: c, err: e}
 		}
 	}
 }
@@ -215,4 +179,23 @@ func (s *Session) CreateHelloAnswer() proto.HelloAnswer {
 
 func makeFullED2KVersion(clientId uint32, a uint32, b uint32, c uint32) uint32 {
 	return (clientId << 24) | (a << 17) | (b << 10) | (c << 7)
+}
+
+func (s *Session) ConnectoToPeer(endpoint proto.Endpoint) *PeerConnection {
+	s.connectionsMutex.Lock()
+	defer s.connectionsMutex.Unlock()
+	_, ok := s.connections[endpoint]
+	if !ok {
+		pc := PeerConnection{endpoint: endpoint}
+		s.connections[endpoint] = &pc
+		return &pc
+	}
+
+	return nil
+}
+
+func (s *Session) ClosePeerConnection(endpoint proto.Endpoint) {
+	s.connectionsMutex.Lock()
+	defer s.connectionsMutex.Unlock()
+	delete(s.connections, endpoint)
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/a-pavlov/ged2k/proto"
@@ -30,6 +29,11 @@ type Peer struct {
 	peerConnection *PeerConnection
 	endpoint       proto.Endpoint
 	Speed          int
+}
+
+func (p Peer) IsEmpty() bool {
+	e := proto.Endpoint{}
+	return p.endpoint == e
 }
 
 func (p Peer) IsConnectCandidate() bool {
@@ -91,16 +95,12 @@ func ComparePeerErase(l Peer, r Peer) bool {
 }
 
 type Policy struct {
-	mutex      sync.Mutex
 	roundRobin int
 	peers      []Peer
 	transfer   *Transfer
 }
 
 func (policy *Policy) AddPeer(p Peer) bool {
-	policy.mutex.Lock()
-	defer policy.mutex.Unlock()
-
 	if len(policy.peers) >= MAX_PEER_LIST_SIZE {
 		if !policy.erasePeers() {
 			return false
@@ -186,11 +186,8 @@ func (policy *Policy) erasePeers() bool {
 }
 
 func (policy *Policy) newConnection(connection *PeerConnection) bool {
-	policy.mutex.Lock()
-
 	indx := policy.GetPeerIndexByEndpoint(connection.peer.endpoint)
 	if indx != -1 {
-		defer policy.mutex.Unlock()
 
 		p := policy.peers[indx]
 		if p.peerConnection != nil {
@@ -239,9 +236,17 @@ func comparePeers(l Peer, r Peer) bool {
 	return false
 }
 
+func (policy *Policy) NumConnectCandidates() int {
+	res := 0
+	for _, x := range policy.peers {
+		if x.IsConnectCandidate() {
+			res++
+		}
+	}
+	return res
+}
+
 func (policy *Policy) FindConnectCandidate(t time.Time) Peer {
-	policy.mutex.Lock()
-	defer policy.mutex.Unlock()
 	candidate := -1
 	eraseCandidate := -1
 	if policy.roundRobin >= len(policy.peers) {
@@ -307,5 +312,20 @@ func (policy *Policy) FindConnectCandidate(t time.Time) Peer {
 		return Peer{}
 	}
 
+	x := time.Now().Add(time.Second * time.Duration(5))
+	policy.peers[candidate].NextConnection = x
 	return policy.peers[candidate]
+}
+
+func (policy *Policy) PeerConnectionClosed(peerConnection *PeerConnection, e error) {
+	for _, x := range policy.peers {
+		if x.peerConnection == peerConnection {
+			x.LastConnected = time.Now()
+			if e != nil {
+				x.FailCount = x.FailCount + 1
+			}
+			x.peerConnection = nil
+			break
+		}
+	}
 }

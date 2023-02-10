@@ -101,7 +101,6 @@ func (sc *ServerConnection) Start(address string) {
 	pc := proto.PacketCombiner{}
 	for {
 		ph, bytes, err := pc.Read(connection)
-
 		if err != nil {
 			fmt.Printf("Can not read bytes from server %v", err)
 			break
