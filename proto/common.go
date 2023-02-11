@@ -38,7 +38,7 @@ func (sb *StateBuffer) ReadUint8() uint8 {
 		return 0x0
 	}
 
-	if sb.pos+1 < len(sb.Data) {
+	if sb.pos+1 <= len(sb.Data) {
 		res := sb.Data[sb.pos]
 		sb.pos++
 		return res
@@ -552,13 +552,13 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 		pc.data = make([]byte, 6)
 	}
 
-	data, err := ReadTo(reader, pc.data[:6])
+	_, err := io.ReadFull(reader, pc.data[:6])
 
 	if err != nil {
-		return ph, data, err
+		return ph, pc.data, err
 	}
 
-	ph.Read(data)
+	ph.Read(pc.data[:6])
 
 	fmt.Printf("Packet header %x/%d/%x\n", ph.Protocol, ph.Bytes, ph.Packet)
 
@@ -577,7 +577,7 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 	}
 
 	if bytesToRead > ED2K_MAX_PACKET_SIZE {
-		return PacketHeader{}, data, fmt.Errorf("max packet size overflow %d", ph.Bytes)
+		return PacketHeader{}, pc.data[:6], fmt.Errorf("max packet size overflow %d", ph.Bytes)
 	}
 
 	if bytesToRead > len(pc.data) {
@@ -594,22 +594,23 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 	}
 
 	if bytesToRead > 0 {
-		_, err = ReadTo(reader, pc.data[:bytesToRead])
+		_, err = io.ReadFull(reader, pc.data[:bytesToRead])
 		if err != nil {
-			return ph, data, err
+			return ph, pc.data[:6], err
 		}
 	}
 
 	if ph.Protocol == OP_PACKEDPROT {
-		b := bytes.NewReader(pc.data[:ph.Bytes-1])
+		b := bytes.NewReader(pc.data[:bytesToRead])
+		///err := os.WriteFile("/tmp/dat1", pc.data[:bytesToRead], 0644)
 		z, err := zlib.NewReader(b)
 		if err != nil {
-			return ph, data, err
+			return ph, pc.data[:6], err
 		}
 		defer z.Close()
 		unzipped, err := ioutil.ReadAll(z)
 		if err != nil {
-			return ph, data, err
+			return ph, pc.data[:6], err
 		}
 
 		// correct package size
@@ -618,20 +619,4 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 	}
 
 	return ph, pc.data[:bytesToRead], nil
-}
-
-func ReadTo(r io.Reader, buffer []byte) ([]byte, error) {
-	pos := 0
-	for {
-		n, err := r.Read(buffer[pos:])
-		if err != nil {
-			return buffer, err
-		}
-
-		pos += n
-
-		if pos == len(buffer) {
-			return buffer, nil
-		}
-	}
 }

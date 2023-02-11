@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 
 	"golang.org/x/crypto/md4"
@@ -375,34 +376,6 @@ func Test_packetCombiner(t *testing.T) {
 	}
 }
 
-func ReadAll(r io.Reader) ([]byte, error) {
-	b := make([]byte, 0, 12)
-	for i := 0; i < 12; i++ {
-		b = append(b, 0)
-		fmt.Println("Arr len", len(b), "cap", cap(b))
-	}
-
-	b = append(b, 0)[:len(b)]
-
-	fmt.Println("Started", len(b), "capacity", cap(b))
-	for {
-		if len(b) == cap(b) {
-			// Add more capacity (let append pick how much).
-			b = append(b, 0)[:len(b)]
-			fmt.Println("Append to len ", len(b), "capacity", cap(b))
-		}
-		n, err := r.Read(b[len(b):cap(b)])
-		b = b[:len(b)+n]
-		fmt.Println("Read len bytes", len(b))
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-			}
-			return b, err
-		}
-	}
-}
-
 /*
 func Test_bp(t *testing.T) {
 	cp := OneByteProvider{data: []byte{OP_EDONKEYHEADER, 0x04, 0x00, 0x00, 0x00, OP_LOGINREQUEST, 0x01, 0x02, 0x03, // packet 1
@@ -497,11 +470,11 @@ func Test_packetCombinerOverflow(t *testing.T) {
 func Test_bufferCombiner(t *testing.T) {
 	var bp = BufferProvider{bufs: [][]byte{{0x01, 0x04}, {0x00, 0x00, 0x00}, {0x10}}}
 	buffer := make([]byte, 6)
-	buf, err := ReadTo(&bp, buffer)
+	_, err := io.ReadFull(&bp, buffer)
 	if err != nil {
 		t.Errorf("Reading header buffer error %v", err)
-	} else if !bytes.Equal(buf, []byte{0x01, 0x04, 0x00, 0x00, 0x00, 0x10}) {
-		t.Errorf("Received wrong bytes %v", buf)
+	} else if !bytes.Equal(buffer, []byte{0x01, 0x04, 0x00, 0x00, 0x00, 0x10}) {
+		t.Errorf("Received wrong bytes %v", buffer)
 	}
 }
 
@@ -630,6 +603,40 @@ func Test_Endpoint2Str(t *testing.T) {
 	for i := 0; i < len(template); i++ {
 		if template[i] != endpoints[i].AsString() {
 			t.Errorf("Endpoint to string %s does not match %s", endpoints[i].AsString(), template[i])
+		}
+	}
+
+}
+
+func Test_PacketCombiner(t *testing.T) {
+	f, err := os.OpenFile("./search.dat", os.O_RDONLY, 0755)
+	if err != nil {
+		t.Errorf("Unable to open dat file %v", err)
+	} else {
+		pc := PacketCombiner{data: make([]byte, 100)}
+		header, data, perr := pc.Read(f)
+		if perr != nil {
+			t.Errorf("Unable to process file %v", perr)
+		} else {
+
+			if header.Protocol != OP_PACKEDPROT {
+				t.Errorf("Wrong protocol %v", header.Protocol)
+			}
+
+			sb := StateBuffer{Data: data}
+			sr := SearchResult{}
+			sb.Read(&sr)
+			if sb.Error() != nil {
+				t.Errorf("Unable to serialize search res %v", sb.Error())
+			} else {
+				if len(sr.Items) != 504 {
+					t.Errorf("Wrong number of search res %d, expected 504", len(sr.Items))
+				}
+
+				if sr.MoreResults != 1 {
+					t.Errorf("More results incorrect %v", sr.MoreResults)
+				}
+			}
 		}
 	}
 

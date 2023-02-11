@@ -170,11 +170,11 @@ func (entry OperatorEntry) Size() int {
 	return DataSize(SEARCH_TYPE_BOOL) + DataSize(byte(entry))
 }
 
-func (entry ParenEntry) Put(sb *StateBuffer) *StateBuffer {
+func (entry ParenEntry) Put(*StateBuffer) *StateBuffer {
 	panic("Requested put for paren entry")
 }
 
-func (entry *ParenEntry) Get(sb *StateBuffer) *StateBuffer {
+func (entry *ParenEntry) Get(*StateBuffer) *StateBuffer {
 	panic("Requested get for parent entry")
 }
 
@@ -471,7 +471,7 @@ func (sr SearchRequest) Put(sb *StateBuffer) *StateBuffer {
 	return sb
 }
 
-func (sr *SearchRequest) Get(sb *StateBuffer) *StateBuffer {
+func (sr *SearchRequest) Get(*StateBuffer) *StateBuffer {
 	panic("SearchRequest Get issued")
 }
 
@@ -490,7 +490,7 @@ func (sm SearchMore) Put(sb *StateBuffer) *StateBuffer {
 	return sb
 }
 
-func (sm *SearchMore) Get(sb *StateBuffer) *StateBuffer {
+func (sm *SearchMore) Get(*StateBuffer) *StateBuffer {
 	panic("SearchMore Get issued")
 }
 
@@ -508,7 +508,7 @@ func (gfs GetFileSources) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(gfs.H).Write(gfs.LowPart).Write(gfs.HiPart)
 }
 
-func (gfs *GetFileSources) Get(sb *StateBuffer) *StateBuffer {
+func (gfs *GetFileSources) Get(*StateBuffer) *StateBuffer {
 	panic("GetFileSources Get issued")
 }
 
@@ -533,16 +533,18 @@ func (sr *SearchResult) Get(sb *StateBuffer) *StateBuffer {
 				}
 			}
 
-			if sb.Error() == nil {
+			if sb.Error() == nil && sb.Remain() > 0 {
 				sr.MoreResults = sb.ReadUint8()
 			}
+		} else {
+			sb.err = fmt.Errorf("elements count too large")
 		}
 	}
 
 	return sb
 }
 
-func (sr SearchResult) Put(sb *StateBuffer) *StateBuffer {
+func (sr SearchResult) Put(*StateBuffer) *StateBuffer {
 	panic("Search result put requested")
 }
 

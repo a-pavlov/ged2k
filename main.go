@@ -22,11 +22,12 @@ L:
 		case "quit":
 			break L
 		case "start":
-			s.ConnectoToServer("5.45.85.226:6584")
+
+			s.Connect("5.45.85.226:6584")
 		case "search":
 			s.Search(cmd[1]) // do not check len
 		case "stop":
-			s.DisconnectFromServer()
+			s.Disconnect()
 		case "slist":
 			s.GetServerList()
 		case "rep":
