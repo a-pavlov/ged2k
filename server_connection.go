@@ -2,59 +2,141 @@ package main
 
 import (
 	"fmt"
+	"github.com/a-pavlov/ged2k/proto"
 	"net"
 	"reflect"
 	"time"
-
-	"github.com/a-pavlov/ged2k/proto"
 )
 
 type ServerConnection struct {
-	buffer        []byte
-	connection    net.Conn
-	lastAttempt   time.Time
-	lastSend      time.Time
-	lastReceived  time.Time
-	outgoingOrder []proto.Serializable
-	address       string
+	buffer     []byte
+	connection net.Conn
+	address    string
+	lastError  error
 }
 
 func CreateServerConnection(a string) *ServerConnection {
-	return &ServerConnection{buffer: make([]byte, 200), lastAttempt: time.Time{}, lastSend: time.Time{}, outgoingOrder: make([]proto.Serializable, 0), address: a}
+	return &ServerConnection{buffer: make([]byte, 200), address: a}
 }
 
-func (sc *ServerConnection) Search(s string) error {
-	parsed, err := proto.BuildEntries(0, 0, 0, 0, "", "", "", 0, 0, s)
+func (serverConnection *ServerConnection) Start(s *Session) {
+	fmt.Println("Server conn init", time.Now())
+	connection, err := net.Dial("tcp", serverConnection.address)
 	if err != nil {
-		return err
+		serverConnection.lastError = err
+		s.unregisterServerConnection <- serverConnection
+		return
 	}
 
-	req, err := proto.PackRequest(parsed)
-	if err != nil {
-		return err
+	fmt.Println("Connected!", time.Now())
+	serverConnection.connection = connection
+
+	s.registerServerConnection <- serverConnection
+
+	var version uint32 = 0x3c
+	var versionClient uint32 = (proto.GED2K_VERSION_MAJOR << 24) | (proto.GED2K_VERSION_MINOR << 17) | (proto.GED2K_VERSION_TINY << 10) | (1 << 7)
+	var capability uint32 = proto.CAPABLE_AUXPORT | proto.CAPABLE_NEWTAGS | proto.CAPABLE_UNICODE | proto.CAPABLE_LARGEFILES | proto.CAPABLE_ZLIB
+
+	var hello proto.UsualPacket
+	hello.H = proto.EMULE
+	hello.Point = proto.Endpoint{Ip: 0, Port: 20033}
+	hello.Properties = append(hello.Properties, proto.CreateTag(version, proto.CT_VERSION, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(capability, proto.CT_SERVER_FLAGS, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag("ged2k", proto.CT_NAME, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(versionClient, proto.CT_EMULE_VERSION, ""))
+
+	_, serverConnection.lastError = serverConnection.SendPacket(&hello)
+	fmt.Println("Send hello", time.Now())
+
+	if serverConnection.lastError != nil {
+		s.unregisterServerConnection <- serverConnection
+		return
 	}
 
-	sc.outgoingOrder = append(sc.outgoingOrder, &req)
-	sc.Send()
-	return nil
-}
+	pc := proto.PacketCombiner{}
 
-func (sc *ServerConnection) ServerList() {
-	gsl := proto.GetServerList{}
-	sc.outgoingOrder = append(sc.outgoingOrder, &gsl)
-	sc.Send()
-}
-
-func (sc *ServerConnection) Send() {
-	if len(sc.outgoingOrder) > 0 {
-		_, err := sc.SendPacket(sc.outgoingOrder[0])
-
+	for {
+		ph, bytes, err := pc.Read(connection)
 		if err != nil {
-			defer sc.connection.Close()
-		} else {
-			sc.lastSend = time.Now()
+			serverConnection.lastError = err
+			break
+		}
+
+		sb := proto.StateBuffer{Data: bytes}
+
+		switch ph.Packet {
+		case proto.OP_SERVERLIST:
+			elems := sb.ReadUint8()
+			if sb.Error() == nil && elems < 100 {
+				c := proto.Collection{}
+				for i := 0; i < int(elems); i++ {
+					c = append(c, &proto.Endpoint{})
+				}
+				sb.Read(&c)
+			}
+		case proto.OP_GETSERVERLIST:
+			// ignore
+		case proto.OP_SERVERMESSAGE:
+			bc := proto.ByteContainer{}
+			bc.Get(&sb)
+			if sb.Error() == nil {
+				s.serverPackets <- &bc
+				fmt.Println("Receive message from server", string(bc))
+			}
+		case proto.OP_SERVERSTATUS:
+			ss := proto.Status{}
+			ss.Get(&sb)
+			if sb.Error() == nil {
+				s.serverPackets <- &ss
+				fmt.Println("Server status files:", ss.FilesCount, "users", ss.UsersCount)
+			}
+		case proto.OP_IDCHANGE:
+			idc := proto.IdChange{}
+			idc.Get(&sb)
+			if sb.Error() == nil {
+				fmt.Println("Server id change", idc.ClientId)
+				s.serverPackets <- &idc
+			}
+		case proto.OP_SERVERIDENT:
+			p := proto.UsualPacket{}
+			p.Get(&sb)
+			if sb.Error() == nil {
+				fmt.Println("Received server info packet")
+			}
+		case proto.OP_SEARCHRESULT:
+			p := proto.SearchResult{}
+			p.Get(&sb)
+			if sb.Error() == nil {
+				fmt.Printf("Search result received: %d, more results %v\n", len(p.Items), p.MoreResults)
+				s.serverPackets <- &p
+			} else {
+				fmt.Printf("Unable to de-serealize %v\n", sb.Error())
+			}
+		case proto.OP_SEARCHREQUEST:
+			// ignore
+		case proto.OP_QUERY_MORE_RESULT:
+			// ignore - out only
+		case proto.OP_GETSOURCES:
+			// ignore - out only
+		case proto.OP_FOUNDSOURCES:
+			// ignore
+		case proto.OP_CALLBACKREQUEST:
+			// ignore - out
+		case proto.OP_CALLBACKREQUESTED:
+			// ignore
+		case proto.OP_CALLBACK_FAIL:
+			// ignore
+		default:
+			fmt.Printf("Packet %x", bytes)
+		}
+
+		if sb.Error() != nil {
+			serverConnection.lastError = sb.Error()
+			break
 		}
 	}
+
+	s.unregisterServerConnection <- serverConnection
 }
 
 func (sc *ServerConnection) SendPacket(data proto.Serializable) (int, error) {

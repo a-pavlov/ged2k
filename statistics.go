@@ -1,7 +1,10 @@
 package main
 
 import "C"
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type StatChannel struct {
 	secondCounter int
@@ -30,8 +33,8 @@ func (sc *StatChannel) AddChannel(s StatChannel) *StatChannel {
 	return sc
 }
 
-func (sc *StatChannel) calc(timeIntervalMS int) {
-	sample := (sc.secondCounter * 1000) / timeIntervalMS
+func (sc *StatChannel) calc(duration time.Duration) {
+	sample := (sc.secondCounter * 1000) / int(duration.Milliseconds())
 	sc.samples = append(sc.samples, sample)
 	if len(sc.samples) > 5 {
 		sc.samples = sc.samples[1:]
@@ -62,6 +65,12 @@ func (s *Statistics) Add(stat *Statistics) {
 	s.mutex.Unlock()
 	for i := range stat.channels {
 		s.channels[i].AddChannel(stat.channels[i])
+	}
+}
+
+func (s *Statistics) SecondTick(duration time.Duration) {
+	for _, x := range s.channels {
+		x.calc(duration)
 	}
 }
 

@@ -23,6 +23,7 @@ L:
 			break L
 		case "start":
 
+			//s.Connect("176.123.5.89:4725")
 			s.Connect("5.45.85.226:6584")
 		case "search":
 			s.Search(cmd[1]) // do not check len

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -12,7 +11,6 @@ type Transfer struct {
 	mutex              sync.Mutex
 	pause              bool
 	stop               bool
-	session            *Session
 	hashSet            []proto.Hash
 	needSaveResumeData bool
 	H                  proto.Hash
@@ -22,6 +20,7 @@ type Transfer struct {
 	waitGroup          sync.WaitGroup
 	commChan           chan string
 	sourcesChan        chan proto.FoundFileSources
+	stat               Statistics
 }
 
 func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) []*PeerConnection {
@@ -55,6 +54,7 @@ func (t *Transfer) AttachPeer(connection *PeerConnection) {
 	connection.transfer = t
 }
 
+/*
 func (t *Transfer) ConnectToPeer(peer Peer) {
 	peer.LastConnected = time.Now()
 	peer.NextConnection = time.Time{}
@@ -72,6 +72,26 @@ func (t *Transfer) PeerConnectionClose(peerConnection *PeerConnection, e error) 
 	t.policy.PeerConnectionClosed(peerConnection, e)
 }
 
+func (t *Transfer) Tick(time time.Time, s *Session) {
+	if !t.pause && !t.IsFinished() {
+		for i := 0; i < 3; i++ {
+			peer := t.policy.FindConnectCandidate(time)
+			if !peer.IsEmpty() {
+				peerConnection := s.ConnectoToPeer(peer.endpoint)
+				if peerConnection != nil {
+					// set peer connection to peer in policy
+					//t.policy.
+				}
+			}
+		}
+	}
+}*/
+
+func (t *Transfer) WantMorePeers() bool {
+	return !t.pause && !t.IsFinished() && t.policy.NumConnectCandidates() > 0
+}
+
+/*
 func (t *Transfer) Tick() {
 	tick := time.Tick(5000 * time.Millisecond)
 	execute := true
@@ -119,8 +139,17 @@ E:
 			}
 		}
 	}
+}*/
+
+func (t *Transfer) IsFinished() bool {
+	return t.piecePicker.NumHave() == t.piecePicker.PiecesCount()
 }
 
-func (t *Transfer) IsFinsihed() bool {
-	return t.piecePicker.NumHave() == t.piecePicker.PiecesCount()
+func (t *Transfer) SecondTick(duration time.Duration, s *Session) {
+	for _, x := range t.connections {
+		t.stat.Add(&x.stat)
+	}
+
+	s.stat.Add(&t.stat)
+	t.stat.SecondTick(duration)
 }
