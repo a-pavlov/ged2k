@@ -16,6 +16,20 @@ type PendingBlock struct {
 	region data.Region
 }
 
+func Min(a uint64, b uint64) uint64 {
+	if a < b {
+		return a
+	}
+
+	return b
+}
+
+func CreatePendingBlock(b data.PieceBlock, size uint64) PendingBlock {
+	begin := b.Start()
+	end := Min(b.Start()+uint64(data.BLOCK_SIZE), size)
+	return PendingBlock{block: b, region: data.MakeRegion(data.Range{Begin: begin, End: end}), data: make([]byte, end-begin)}
+}
+
 func removePendingBlock(s []*PendingBlock, i int) []*PendingBlock {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]
@@ -48,36 +62,16 @@ func (pb *PendingBlock) ReceiveToEnd(reader io.Reader, begin uint64) (int, error
 	return pb.Receive(reader, begin, pieceBlock.Start()+uint64(data.BLOCK_SIZE)-uint64(inBlockOffset))
 }
 
-func Receive(reader io.Reader, data []byte) error {
-	receivedBytes := 0
-	for receivedBytes < len(data) {
-		n, err := reader.Read(data[receivedBytes:])
-		if err != nil {
-			return err
-		}
-
-		receivedBytes += n
-	}
-
-	return nil
-}
-
 type PeerConnection struct {
 	connection net.Conn
 	transfer   *Transfer
-	session    *Session
-	peer       Peer
+	peer       *Peer
 	endpoint   proto.Endpoint
 	address    string
 
-	recvPieceIndex    int
-	recvStart         uint64
-	recvLength        uint64
-	recvReqCompressed bool
-	recvPos           uint64
-	downloadQueue     []PendingBlock
-	lastError         error
-	stat              Statistics
+	lastError       error
+	stat            Statistics
+	requestedBlocks []*PendingBlock
 }
 
 func (peerConnection *PeerConnection) Start(s *Session) {
@@ -93,7 +87,6 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 	}
 
 	pc := proto.PacketCombiner{}
-	var requestedBlocks []*PendingBlock
 
 	for {
 		ph, packetBytes, err := pc.Read(peerConnection.connection)
@@ -114,7 +107,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			}
 			// obtain peer information
-			helloAnswer := peerConnection.session.CreateHelloAnswer()
+			helloAnswer := s.CreateHelloAnswer()
 			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HELLOANSWER, &helloAnswer)
 			// send hello answer
 			// send file request
@@ -158,9 +151,11 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			h := proto.Hash{}
 			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &h)
 
-			// got file status ansfer
+			// got file status answer
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
+			peerConnection.lastError = fmt.Errorf("no file answer received")
+			break
 		case ph.Packet == proto.OP_HASHSETREQUEST:
 			// hash set request received
 		case ph.Packet == proto.OP_HASHSETANSWER:
@@ -173,9 +168,9 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			}
 
-			if uint32(count) > proto.MAX_ELEMS {
-				//sb.err = fmt.Errorf("elements count greater than max elements %d", sz)
-				return
+			if int(count) > int(proto.MAX_ELEMS) {
+				peerConnection.lastError = fmt.Errorf("elements count too large")
+				break
 			}
 
 			for i := 0; i < int(count); i++ {
@@ -195,9 +190,12 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 
 			// got accept upload
 		case ph.Packet == proto.OP_QUEUERANKING:
+			rank := sb.ReadUint16()
+			fmt.Println("queue ranked", rank)
 			// got queue ranking
 		case ph.Packet == proto.OP_OUTOFPARTREQS:
 			// got out of parts
+			fmt.Println("out of parts received")
 		case ph.Packet == proto.OP_REQUESTPARTS:
 			// got 32 request parts request
 		case ph.Packet == proto.OP_REQUESTPARTS_I64:
@@ -212,7 +210,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 
 			block := data.FromOffset(sp.Begin)
 
-			for i, x := range requestedBlocks {
+			for i, x := range peerConnection.requestedBlocks {
 				if x.block == block {
 					if x.data != nil {
 						_, err := x.Receive(peerConnection.connection, sp.Begin, sp.End)
@@ -221,7 +219,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 						}
 
 						if x.region.IsEmpty() {
-							removePendingBlock(requestedBlocks, i)
+							removePendingBlock(peerConnection.requestedBlocks, i)
 							// pass received data to storage
 						}
 					}
@@ -229,8 +227,8 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			}
 
 			// all blocks completed
-			if len(requestedBlocks) == 0 {
-				// start new request
+			if len(peerConnection.requestedBlocks) == 0 {
+				peerConnection.transfer.peerConnChan <- peerConnection
 			}
 
 			// got 32 sending part response
@@ -246,10 +244,10 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			}
 
 			block := data.FromOffset(cp.Offset)
-			for _, x := range requestedBlocks {
+			for _, x := range peerConnection.requestedBlocks {
 				if x.block == block {
 					compressedData := make([]byte, cp.CompressedDataLength)
-					err := Receive(peerConnection.connection, compressedData)
+					_, err := io.ReadFull(peerConnection.connection, compressedData)
 					if err != nil {
 						// close peerConnection and exit
 					}
@@ -266,8 +264,11 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 					if err != nil {
 						peerConnection.lastError = err
 					}
-
 				}
+			}
+
+			if len(peerConnection.requestedBlocks) == 0 {
+				peerConnection.transfer.peerConnChan <- peerConnection
 			}
 
 		case ph.Packet == proto.OP_END_OF_DOWNLOAD:

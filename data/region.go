@@ -67,6 +67,10 @@ func (region Region) Begin() uint64 {
 	return region.Segments[0].Begin
 }
 
+func (region Region) End() uint64 {
+	return region.Segments[0].End
+}
+
 type PieceBlock struct {
 	PieceIndex int
 	BlockIndex int

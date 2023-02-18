@@ -75,3 +75,35 @@ func Test_FullIntersect(t *testing.T) {
 		t.Errorf("segments count is not correct %d", len(rg.Segments))
 	}
 }
+
+func Test_Size2PieceBlockIndex(t *testing.T) {
+	p1, b1 := NumPiecesAndBlocks(0)
+	if p1 != 0 || b1 != 0 {
+		t.Errorf("Pieces or blocks count is not correct [%d %d]", p1, b1)
+	}
+
+	p2, b2 := NumPiecesAndBlocks(BLOCK_SIZE_UINT64)
+	if p2 != 0 || b2 != 1 {
+		t.Errorf("Pieces or blocks count is not correct [%d %d]", p2, b2)
+	}
+
+	p3, b3 := NumPiecesAndBlocks(BLOCK_SIZE_UINT64 + 1)
+	if p3 != 0 || b3 != 2 {
+		t.Errorf("Pieces or blocks count is not correct [%d %d]", p3, b3)
+	}
+
+	p4, b4 := NumPiecesAndBlocks(PIECE_SIZE_UINT64 + BLOCK_SIZE_UINT64)
+	if p4 != 1 || b4 != 1 {
+		t.Errorf("Pieces or blocks count is not correct [%d %d]", p4, b4)
+	}
+
+	p5, b5 := NumPiecesAndBlocks(PIECE_SIZE_UINT64)
+	if p5 != 1 || b5 != 0 {
+		t.Errorf("Pieces or blocks count is not correct [%d %d]", p5, b5)
+	}
+
+	p6, b6 := NumPiecesAndBlocks(PIECE_SIZE_UINT64*7 + BLOCK_SIZE_UINT64*10 + 101)
+	if p6 != 7 || b6 != 11 {
+		t.Errorf("Pieces or blocks count is not correct [%d %d]", p6, b6)
+	}
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/a-pavlov/ged2k/data"
 	"sync"
 	"time"
 
@@ -8,7 +9,6 @@ import (
 )
 
 type Transfer struct {
-	mutex              sync.Mutex
 	pause              bool
 	stop               bool
 	hashSet            []proto.Hash
@@ -16,11 +16,22 @@ type Transfer struct {
 	H                  proto.Hash
 	connections        []*PeerConnection
 	policy             Policy
-	piecePicker        PiecePicker
+	piecePicker        *PiecePicker
 	waitGroup          sync.WaitGroup
-	commChan           chan string
+	cmdChan            chan string
+	dataChan           chan *PendingBlock
 	sourcesChan        chan proto.FoundFileSources
+	peerConnChan       chan *PeerConnection
 	stat               Statistics
+	Size               uint64
+}
+
+func CreateTransfer(hash proto.Hash, size uint64) *Transfer {
+	return &Transfer{H: hash,
+		cmdChan:      make(chan string),
+		dataChan:     make(chan *PendingBlock, 10),
+		sourcesChan:  make(chan proto.FoundFileSources),
+		peerConnChan: make(chan *PeerConnection)}
 }
 
 func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) []*PeerConnection {
@@ -35,23 +46,59 @@ func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) 
 }
 
 func (t *Transfer) IsPaused() bool {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
+	//t.mutex.Lock()
+	//defer t.mutex.Unlock()
 	return t.pause
 }
 
 func (t *Transfer) IsNeedSaveResumeData() bool {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
+	//t.mutex.Lock()
+	//defer t.mutex.Unlock()
 	return t.needSaveResumeData
 }
 
 func (t *Transfer) AttachPeer(connection *PeerConnection) {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
+	//t.mutex.Lock()
+	//defer t.mutex.Unlock()
 	t.policy.newConnection(connection)
 	t.connections = append(t.connections, connection)
 	connection.transfer = t
+}
+
+func (t *Transfer) Start() {
+	t.waitGroup.Add(1)
+	defer t.waitGroup.Done()
+	execute := true
+	for execute {
+		select {
+		case _, ok := <-t.cmdChan:
+			if !ok {
+				execute = false
+			}
+		case pb := <-t.dataChan:
+			if pb != nil {
+				// process pb
+			}
+		case peerConnection := <-t.peerConnChan:
+			blocks := t.piecePicker.PickPieces(data.REQUEST_QUEUE_SIZE, peerConnection.peer)
+			req := proto.RequestParts64{H: peerConnection.transfer.H}
+			for i, x := range blocks {
+				pb := CreatePendingBlock(x, peerConnection.transfer.Size)
+				peerConnection.requestedBlocks = append(peerConnection.requestedBlocks, &pb)
+				req.BeginOffset[i] = pb.region.Begin()
+				req.EndOffset[i] = pb.region.Segments[0].End
+			}
+
+			if len(blocks) > 0 {
+				go peerConnection.SendPacket(proto.OP_EMULEPROT, proto.OP_REQUESTPARTS_I64, &req)
+			}
+		}
+	}
+}
+
+func (t *Transfer) Stop() {
+	close(t.cmdChan)
+	t.waitGroup.Wait()
 }
 
 /*
@@ -152,4 +199,14 @@ func (t *Transfer) SecondTick(duration time.Duration, s *Session) {
 
 	s.stat.Add(&t.stat)
 	t.stat.SecondTick(duration)
+}
+
+func (t *Transfer) ConnectOnePeer(time time.Time, s *Session) {
+	candidate := t.policy.FindConnectCandidate(time)
+	if candidate != nil {
+		pc := s.GetPeerConnectionByEndpoint(candidate.endpoint)
+		if pc == nil {
+
+		}
+	}
 }

@@ -20,7 +20,7 @@ type PiecePicker struct {
 }
 
 func CreatePiecePicker(pieceCount int, blocksInLastPiece int) PiecePicker {
-	return PiecePicker{PieceCount: pieceCount, BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieceStatus: make([]byte, pieceCount)}
+	return PiecePicker{PieceCount: pieceCount, BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieceStatus: make([]byte, pieceCount+1)}
 }
 
 func (pp PiecePicker) BlocksInPiece(pieceIndex int) int {
@@ -53,7 +53,7 @@ func (pp PiecePicker) getDownloadingPiece(pieceIndex int) *DownloadingPiece {
 	return nil
 }
 
-func (pp *PiecePicker) addDownloadingBlocks(requiredBlocksCount int, peer Peer, endGame bool) []data.PieceBlock {
+func (pp *PiecePicker) addDownloadingBlocks(requiredBlocksCount int, peer *Peer, endGame bool) []data.PieceBlock {
 	res := []data.PieceBlock{}
 	for _, dp := range pp.downloadingPieces {
 		res = append(res, dp.PickBlock(requiredBlocksCount-len(res), peer, endGame)...)
@@ -101,7 +101,7 @@ func (pp *PiecePicker) piecesCount() (int, int, int) {
 	return none, downloading, have
 }
 
-func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer Peer) []data.PieceBlock {
+func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer *Peer) []data.PieceBlock {
 	pp.mutex.Lock()
 	res := pp.addDownloadingBlocks(requiredBlocksCount, peer, false)
 

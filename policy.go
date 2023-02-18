@@ -36,11 +36,11 @@ func (p Peer) IsEmpty() bool {
 	return p.endpoint == e
 }
 
-func (p Peer) IsConnectCandidate() bool {
+func (p *Peer) IsConnectCandidate() bool {
 	return !(p.peerConnection != nil || !p.Connectable || p.FailCount > 10)
 }
 
-func (p Peer) IsEraseCandidate() bool {
+func (p *Peer) IsEraseCandidate() bool {
 	if p.peerConnection != nil || p.IsConnectCandidate() {
 		return false
 	}
@@ -48,11 +48,11 @@ func (p Peer) IsEraseCandidate() bool {
 	return p.FailCount > 0
 }
 
-func (p Peer) ShouldEraseImmediately() bool {
+func (p *Peer) ShouldEraseImmediately() bool {
 	return (p.SourceFlag & PEER_SRC_RESUME_DATA) == PEER_SRC_RESUME_DATA
 }
 
-func (p Peer) SourceRank() int {
+func (p *Peer) SourceRank() int {
 	ret := 0
 	if (p.SourceFlag & PEER_SRC_SERVER) == PEER_SRC_SERVER {
 		ret |= 1 << 5
@@ -74,7 +74,7 @@ func (p Peer) SourceRank() int {
 }
 
 // true if left better to erase than right
-func ComparePeerErase(l Peer, r Peer) bool {
+func ComparePeerErase(l *Peer, r *Peer) bool {
 	if l.FailCount != r.FailCount {
 		return l.FailCount > r.FailCount
 	}
@@ -96,11 +96,11 @@ func ComparePeerErase(l Peer, r Peer) bool {
 
 type Policy struct {
 	roundRobin int
-	peers      []Peer
+	peers      []*Peer
 	transfer   *Transfer
 }
 
-func (policy *Policy) AddPeer(p Peer) bool {
+func (policy *Policy) AddPeer(p *Peer) bool {
 	if len(policy.peers) >= MAX_PEER_LIST_SIZE {
 		if !policy.erasePeers() {
 			return false
@@ -128,7 +128,7 @@ func (policy *Policy) GetPeerIndexByEndpoint(ep proto.Endpoint) int {
 }
 
 // costly
-func removePeer(s []Peer, i int) []Peer {
+func removePeer(s []*Peer, i int) []*Peer {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]
 }
@@ -199,7 +199,7 @@ func (policy *Policy) newConnection(connection *PeerConnection) bool {
 	}
 
 	p := Peer{endpoint: connection.peer.endpoint, peerConnection: connection}
-	return policy.AddPeer(p)
+	return policy.AddPeer(&p)
 }
 
 /**
@@ -208,7 +208,7 @@ func (policy *Policy) newConnection(connection *PeerConnection) bool {
  * @param rhs
  * @return true if lhs better connect candidate than rhs
  */
-func comparePeers(l Peer, r Peer) bool {
+func comparePeers(l *Peer, r *Peer) bool {
 	// prefer peers with lower failcount
 	if l.FailCount != r.FailCount {
 		return l.FailCount < r.FailCount
@@ -246,7 +246,7 @@ func (policy *Policy) NumConnectCandidates() int {
 	return res
 }
 
-func (policy *Policy) FindConnectCandidate(t time.Time) Peer {
+func (policy *Policy) FindConnectCandidate(t time.Time) *Peer {
 	candidate := -1
 	eraseCandidate := -1
 	if policy.roundRobin >= len(policy.peers) {
@@ -309,7 +309,7 @@ func (policy *Policy) FindConnectCandidate(t time.Time) Peer {
 	}
 
 	if candidate == -1 {
-		return Peer{}
+		return nil
 	}
 
 	x := time.Now().Add(time.Second * time.Duration(5))
@@ -328,4 +328,19 @@ func (policy *Policy) PeerConnectionClosed(peerConnection *PeerConnection, e err
 			break
 		}
 	}
+}
+
+func (policy *Policy) NewConnection(peerConnection *PeerConnection) {
+	for _, x := range policy.peers {
+		if x.endpoint == peerConnection.endpoint {
+			if x.peerConnection == nil {
+				peerConnection.peer = x
+				x.peerConnection = peerConnection
+				return
+			}
+		}
+	}
+
+	peer := Peer{endpoint: peerConnection.endpoint, peerConnection: peerConnection}
+	policy.AddPeer(&peer)
 }

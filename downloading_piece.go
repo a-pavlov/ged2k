@@ -10,7 +10,7 @@ const BLOCK_STATE_FINISHED int = 3
 type Block struct {
 	blockState       int
 	downloadersCount int
-	lastDownloader   Peer
+	lastDownloader   *Peer
 }
 
 type DownloadingPiece struct {
@@ -33,7 +33,7 @@ func (dp *DownloadingPiece) BlocksWithStateCount(state int) int {
 	return res
 }
 
-func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer Peer, endGame bool) []data.PieceBlock {
+func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGame bool) []data.PieceBlock {
 	res := []data.PieceBlock{}
 	// not end game mode and have no free blocks
 	if !endGame && dp.BlocksWithStateCount(BLOCK_STATE_REQUESTED) == len(dp.blocks) {
@@ -69,6 +69,6 @@ func (dp *DownloadingPiece) AbortBlock(blockIndex int, peer Peer) {
 	dp.blocks[blockIndex].blockState = BLOCK_STATE_NONE
 	dp.blocks[blockIndex].downloadersCount--
 	if dp.blocks[blockIndex].lastDownloader.endpoint == peer.endpoint {
-		dp.blocks[blockIndex].lastDownloader = Peer{}
+		dp.blocks[blockIndex].lastDownloader = nil
 	}
 }

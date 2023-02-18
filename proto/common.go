@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-const MAX_ELEMS uint32 = 1000
+const MAX_ELEMS int = 1000
 
 type Serializable interface {
 	Get(sr *StateBuffer) *StateBuffer
@@ -423,7 +423,7 @@ func (c Collection) Put(sb *StateBuffer) *StateBuffer {
 func (c *TagCollection) Get(sb *StateBuffer) *StateBuffer {
 	sz := sb.ReadUint32()
 	if sb.Error() == nil {
-		if sz > MAX_ELEMS {
+		if int(sz) > MAX_ELEMS {
 			sb.err = fmt.Errorf("elements count greater than max elements %d", sz)
 			return sb
 		}

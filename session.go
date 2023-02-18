@@ -203,12 +203,19 @@ func (s *Session) Tick() {
 				for enumerateCandidates {
 					for _, t := range s.transfers {
 						if t.WantMorePeers() {
-							peer := t.policy.FindConnectCandidate(currentTime)
-							if !peer.IsEmpty() {
-								peerConnection := s.GetPeerConnectionByEndpoint(peer.endpoint)
+							candidate := t.policy.FindConnectCandidate(currentTime)
+							if candidate != nil {
+								peerConnection := s.GetPeerConnectionByEndpoint(candidate.endpoint)
 								if peerConnection == nil {
+									candidate.LastConnected = currentTime
+									candidate.NextConnection = time.Time{}
+									peerConnection := PeerConnection{address: candidate.endpoint.AsString(), transfer: t, peer: candidate}
+									s.peerConnections = append(s.peerConnections, &peerConnection)
+									t.connections = append(t.connections, &peerConnection)
+									candidate.peerConnection = &peerConnection
 									connectionsReserve--
 									stepsSinceLastConnect = 0
+									go peerConnection.Start(s)
 								} else {
 									// peer connection on this endpoint already connected
 									// update next time
@@ -251,9 +258,25 @@ func (s *Session) Tick() {
 			if peerConnection.transfer == nil {
 				//looking for corresponding transfer
 				// policy - newConnection
+				//peerConnection.transfer.
 			}
 		case peerConnection := <-s.unregisterPeerConnection:
 			s.peerConnections = removePeerConnection(peerConnection, s.peerConnections)
+			if peerConnection.transfer != nil {
+				peerConnection.transfer.connections = removePeerConnection(peerConnection, peerConnection.transfer.connections)
+			}
+
+			if peerConnection.peer != nil {
+				peerConnection.peer.peerConnection = nil
+				peerConnection.peer.LastConnected = time.Now()
+				// check error somehow
+				if peerConnection.lastError != nil {
+					peerConnection.peer.FailCount += 1
+				}
+			}
+
+			peerConnection.transfer = nil
+			peerConnection.peer = nil
 		}
 	}
 

@@ -5,12 +5,12 @@ type BitField struct {
 	bits  int
 }
 
-func DivCeil(a int, b int) int {
+func DivCeilInt(a int, b int) int {
 	return (a + b - 1) / b
 }
 
 func BitsToBytes(count int) int {
-	return DivCeil(count, 8)
+	return DivCeilInt(count, 8)
 }
 
 func Min(a int, b int) int {

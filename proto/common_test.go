@@ -88,6 +88,40 @@ func Test_hash(t *testing.T) {
 
 }
 
+func Test_pieceHash(t *testing.T) {
+	size := 9727000
+	blockSize := 190 * 1024
+	offset := 0
+	data := make([]byte, blockSize)
+	fmt.Println("Started hash")
+	blocksProcessed := 0
+	hash := md4.New()
+	for offset < size {
+		currBlockSize := Min(size-offset, len(data))
+		hash.Write(data[:currBlockSize])
+		fmt.Println("Hash for bytes", currBlockSize)
+		offset += currBlockSize
+		blocksProcessed++
+	}
+
+	if blocksProcessed != 50 {
+		t.Errorf("Wrong blocks processed number %d", blocksProcessed)
+	}
+
+	arr := make([]byte, 0)
+	arr = hash.Sum(arr)
+
+	if len(arr) != 16 {
+		t.Errorf("Hash size is not corrrect: %d", len(arr))
+	}
+
+	expected := []byte{0x79, 0x32, 0x4E, 0x42, 0x16, 0x02, 0x25, 0x1A, 0x39, 0x93, 0x6D, 0x7E, 0x8B, 0xC6, 0x41, 0x25}
+	if !bytes.Equal(expected, arr) {
+		t.Errorf("Incorrect resulted hash: %v expected %v", arr, expected)
+	}
+
+}
+
 func Test_byteContainer(t *testing.T) {
 	buf := make([]byte, 5)
 	bc := []byte{0x01, 0x02, 0x03}
