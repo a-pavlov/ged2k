@@ -2,10 +2,11 @@ package main
 
 import (
 	"github.com/a-pavlov/ged2k/data"
+	"github.com/a-pavlov/ged2k/proto"
+	"golang.org/x/crypto/md4"
+	"os"
 	"sync"
 	"time"
-
-	"github.com/a-pavlov/ged2k/proto"
 )
 
 type Transfer struct {
@@ -22,16 +23,23 @@ type Transfer struct {
 	dataChan           chan *PendingBlock
 	sourcesChan        chan proto.FoundFileSources
 	peerConnChan       chan *PeerConnection
+	hashSetChan        chan *proto.HashSet
 	stat               Statistics
 	Size               uint64
+	filename           string
+	file               *os.File
+	incomingPieces     map[int]*ReceivingPiece
 }
 
-func CreateTransfer(hash proto.Hash, size uint64) *Transfer {
+func CreateTransfer(hash proto.Hash, size uint64, file *os.File) *Transfer {
 	return &Transfer{H: hash,
-		cmdChan:      make(chan string),
-		dataChan:     make(chan *PendingBlock, 10),
-		sourcesChan:  make(chan proto.FoundFileSources),
-		peerConnChan: make(chan *PeerConnection)}
+		cmdChan:        make(chan string),
+		dataChan:       make(chan *PendingBlock, 10),
+		sourcesChan:    make(chan proto.FoundFileSources),
+		peerConnChan:   make(chan *PeerConnection),
+		hashSetChan:    make(chan *proto.HashSet),
+		file:           file,
+		incomingPieces: make(map[int]*ReceivingPiece)}
 }
 
 func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) []*PeerConnection {
@@ -67,6 +75,7 @@ func (t *Transfer) AttachPeer(connection *PeerConnection) {
 
 func (t *Transfer) Start() {
 	t.waitGroup.Add(1)
+	var hs *proto.HashSet
 	defer t.waitGroup.Done()
 	execute := true
 	for execute {
@@ -75,10 +84,34 @@ func (t *Transfer) Start() {
 			if !ok {
 				execute = false
 			}
+		case hs = <-t.hashSetChan:
+
 		case pb := <-t.dataChan:
-			if pb != nil {
-				// process pb
+			rp, ok := t.incomingPieces[pb.block.PieceIndex]
+			if !ok {
+				rp = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
 			}
+
+			rp.InsertBlock(pb)
+
+			if len(rp.blocks) == t.piecePicker.BlocksInPiece(pb.block.PieceIndex) {
+				// check hash here
+				if hs != nil {
+					if rp.Hash().Equals(hs.PieceHashes[pb.block.PieceIndex]) {
+						// hash is not matching
+					}
+				}
+				// start file writing
+				_, e := t.file.Seek(int64(rp.blocks[0].block.Start()), 0)
+				if e != nil {
+					// error on file writing
+				} else {
+					for _, x := range rp.blocks {
+						t.file.Write(x.data)
+					}
+				}
+			}
+
 		case peerConnection := <-t.peerConnChan:
 			blocks := t.piecePicker.PickPieces(data.REQUEST_QUEUE_SIZE, peerConnection.peer)
 			req := proto.RequestParts64{H: peerConnection.transfer.H}

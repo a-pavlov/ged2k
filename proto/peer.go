@@ -1,5 +1,7 @@
 package proto
 
+import "fmt"
+
 const PARTS_IN_REQUEST int = 3
 
 const LARGE_FILE_OFFSET int = 4
@@ -76,6 +78,39 @@ func (fs FileStatusAnswer) Put(sb *StateBuffer) *StateBuffer {
 
 func (fs FileStatusAnswer) Size() int {
 	return DataSize(fs.H) + DataSize(fs.BF)
+}
+
+type HashSet struct {
+	H           Hash
+	PieceHashes []Hash
+}
+
+func (hs *HashSet) Get(sb *StateBuffer) *StateBuffer {
+	sb.Read(&hs.H)
+	size := sb.ReadUint16()
+	if int(size) > MAX_ELEMS {
+		sb.err = fmt.Errorf("elems count too large %v", size)
+		return sb
+	}
+
+	hs.PieceHashes = make([]Hash, int(size))
+	for i, _ := range hs.PieceHashes {
+		sb.Read(&hs.PieceHashes[i])
+	}
+
+	return sb
+}
+
+func (hs HashSet) Put(sb *StateBuffer) *StateBuffer {
+	sb.Write(hs.H).Write(uint16(len(hs.PieceHashes)))
+	for _, x := range hs.PieceHashes {
+		sb.Write(x)
+	}
+	return sb
+}
+
+func (hs HashSet) Size() int {
+	return DataSize(hs.H) + DataSize(uint16(len(hs.PieceHashes))) + len(hs.PieceHashes)*DataSize(hs.H)
 }
 
 type RequestParts32 struct {

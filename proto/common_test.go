@@ -85,7 +85,22 @@ func Test_hash(t *testing.T) {
 	if h4 != term {
 		t.Errorf("Term hash %x not match %x", term, h4)
 	}
+}
 
+func Test_Hash2(t *testing.T) {
+	var h1 Hash
+	var h2 Hash
+	var h3 Hash
+	h1 = EMULE
+	h2 = EMULE
+	h3 = LIBED2K
+	if !h1.Equals(h2) {
+		t.Errorf("Hashes are not equal: %v != %v", h1, h2)
+	}
+
+	if h1.Equals(h3) || h2.Equals(h3) {
+		t.Errorf("Hashes are equal: %v = %v = %v", h1, h2, h3)
+	}
 }
 
 func Test_pieceHash(t *testing.T) {

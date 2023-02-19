@@ -9,8 +9,8 @@ const HIGHEST_LOWID_ED2K int = 16777216
 const REQUEST_QUEUE_SIZE int = 3
 const PARTS_IN_REQUEST int = 3
 
-func InBlockOffset(begin uint64, end uint64) (int, int) {
-	return int(begin % PIECE_SIZE_UINT64), int(end - begin)
+func InBlockOffset(begin uint64) int {
+	return int(begin % PIECE_SIZE_UINT64)
 }
 
 func DivCeil64(a uint64, b uint64) uint64 {

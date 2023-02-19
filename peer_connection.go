@@ -36,30 +36,27 @@ func removePendingBlock(s []*PendingBlock, i int) []*PendingBlock {
 }
 
 func (pb *PendingBlock) Receive(reader io.Reader, begin uint64, end uint64) (int, error) {
-	inBlockOffset, chunkLen := data.InBlockOffset(begin, end)
-	receivedBytes := 0
-	for receivedBytes < chunkLen {
-		n, err := reader.Read(pb.data[inBlockOffset+receivedBytes : inBlockOffset+chunkLen])
-		if err != nil {
-			if err == io.EOF {
-				receivedBytes += n
-				return receivedBytes, nil
-			}
-
-			return receivedBytes, err
+	inBlockOffset := data.InBlockOffset(begin)
+	chunkLen := int(end - begin)
+	n, err := io.ReadFull(reader, pb.data[inBlockOffset:inBlockOffset+chunkLen])
+	if err == nil {
+		if n != chunkLen {
+			return n, fmt.Errorf("not enough bytes")
 		}
-		receivedBytes += n
+		pb.region.Sub(data.Range{Begin: begin, End: end})
 	}
 
-	pb.region.Sub(data.Range{Begin: begin, End: end})
-	return receivedBytes, nil
+	return n, err
 }
 
-func (pb *PendingBlock) ReceiveToEnd(reader io.Reader, begin uint64) (int, error) {
-	pieceBlock := data.FromOffset(begin)
-	inBlockOffset, _ := data.InBlockOffset(begin, begin+1)
-	// end offset is piece block start + block size - in block offset
-	return pb.Receive(reader, begin, pieceBlock.Start()+uint64(data.BLOCK_SIZE)-uint64(inBlockOffset))
+func (pb *PendingBlock) ReceiveToEof(reader io.Reader, begin uint64) (int, error) {
+	inBlockOffset := data.InBlockOffset(begin)
+	n, err := io.ReadFull(reader, pb.data[inBlockOffset:])
+	if err == nil {
+		pb.region.Sub(data.Range{Begin: begin, End: begin + uint64(n)})
+	}
+
+	return n, err
 }
 
 type PeerConnection struct {
@@ -160,30 +157,14 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			// hash set request received
 		case ph.Packet == proto.OP_HASHSETANSWER:
 			// got hash set answer
-			h := proto.Hash{}
-			sb.Read(&h)
-			count := sb.ReadUint16()
+			hs := proto.HashSet{}
+			sb.Read(&hs)
 			if sb.Error() != nil {
 				peerConnection.lastError = sb.Error()
 				break
 			}
 
-			if int(count) > int(proto.MAX_ELEMS) {
-				peerConnection.lastError = fmt.Errorf("elements count too large")
-				break
-			}
-
-			for i := 0; i < int(count); i++ {
-				hash := proto.Hash{}
-				sb.Read(&hash)
-
-				if sb.Error() != nil {
-					peerConnection.lastError = sb.Error()
-					break
-				}
-			}
-
-			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &h)
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &hs.H)
 		case ph.Packet == proto.OP_STARTUPLOADREQ:
 			// receive start upload request
 		case ph.Packet == proto.OP_ACCEPTUPLOADREQ:
@@ -219,10 +200,11 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 						}
 
 						if x.region.IsEmpty() {
+							peerConnection.transfer.dataChan <- x
 							removePendingBlock(peerConnection.requestedBlocks, i)
-							// pass received data to storage
 						}
 					}
+
 				}
 			}
 
@@ -244,7 +226,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			}
 
 			block := data.FromOffset(cp.Offset)
-			for _, x := range peerConnection.requestedBlocks {
+			for i, x := range peerConnection.requestedBlocks {
 				if x.block == block {
 					compressedData := make([]byte, cp.CompressedDataLength)
 					_, err := io.ReadFull(peerConnection.connection, compressedData)
@@ -260,10 +242,17 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 
 					defer z.Close()
 
-					_, err = x.ReceiveToEnd(z, cp.Offset)
+					_, err = x.ReceiveToEof(z, cp.Offset)
 					if err != nil {
 						peerConnection.lastError = err
 					}
+
+					if x.region.IsEmpty() {
+						peerConnection.transfer.dataChan <- x
+						removePendingBlock(peerConnection.requestedBlocks, i)
+					}
+
+					break
 				}
 			}
 

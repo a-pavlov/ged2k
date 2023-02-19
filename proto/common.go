@@ -336,6 +336,10 @@ func (h Hash) Size() int {
 	return 16
 }
 
+func (h Hash) Equals(hash Hash) bool {
+	return bytes.Equal(h[:], hash[:])
+}
+
 type Endpoint struct {
 	Ip   uint32
 	Port uint16
