@@ -1,6 +1,8 @@
 package main
 
-import "github.com/a-pavlov/ged2k/data"
+import (
+	"github.com/a-pavlov/ged2k/proto"
+)
 
 const BLOCK_STATE_NONE int = 0
 const BLOCK_STATE_REQUESTED int = 1
@@ -33,8 +35,8 @@ func (dp *DownloadingPiece) BlocksWithStateCount(state int) int {
 	return res
 }
 
-func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGame bool) []data.PieceBlock {
-	res := []data.PieceBlock{}
+func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGame bool) []proto.PieceBlock {
+	res := []proto.PieceBlock{}
 	// not end game mode and have no free blocks
 	if !endGame && dp.BlocksWithStateCount(BLOCK_STATE_REQUESTED) == len(dp.blocks) {
 		return res
@@ -42,7 +44,7 @@ func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGa
 
 	for i := 0; i < len(dp.blocks) && len(res) < requiredBlocksCount; i++ {
 		if dp.blocks[i].blockState == BLOCK_STATE_NONE {
-			res = append(res, data.PieceBlock{PieceIndex: dp.pieceIndex, BlockIndex: i})
+			res = append(res, proto.PieceBlock{PieceIndex: dp.pieceIndex, BlockIndex: i})
 			dp.blocks[i].blockState = BLOCK_STATE_REQUESTED
 			dp.blocks[i].lastDownloader = peer
 			continue
@@ -53,7 +55,7 @@ func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGa
 			if dp.blocks[i].downloadersCount < 2 && dp.blocks[i].lastDownloader.Speed < peer.Speed && peer != dp.blocks[i].lastDownloader {
 				dp.blocks[i].blockState = BLOCK_STATE_REQUESTED
 				dp.blocks[i].lastDownloader = peer
-				res = append(res, data.PieceBlock{PieceIndex: dp.pieceIndex, BlockIndex: i})
+				res = append(res, proto.PieceBlock{PieceIndex: dp.pieceIndex, BlockIndex: i})
 			}
 		}
 	}

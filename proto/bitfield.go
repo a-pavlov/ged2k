@@ -36,7 +36,7 @@ func (bf *BitField) Get(sb *StateBuffer) *StateBuffer {
 }
 
 func (bf BitField) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(uint16(len(bf.bytes))).Write(bf.bytes)
+	return sb.Write(uint16(bf.bits)).Write(bf.bytes)
 }
 
 func (bf BitField) Size() int {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/a-pavlov/ged2k/data"
 	"github.com/a-pavlov/ged2k/proto"
 	"golang.org/x/crypto/md4"
 	"os"
@@ -115,7 +114,7 @@ func (t *Transfer) Start(s *Session) {
 			}
 
 		case peerConnection := <-t.peerConnChan:
-			blocks := t.piecePicker.PickPieces(data.REQUEST_QUEUE_SIZE, peerConnection.peer)
+			blocks := t.piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
 			req := proto.RequestParts64{Hash: peerConnection.transfer.Hash}
 			for i, x := range blocks {
 				pb := CreatePendingBlock(x, peerConnection.transfer.Size)

@@ -1,6 +1,9 @@
 package proto
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func Test_utils(t *testing.T) {
 	if BitsToBytes(28) != 4 {
@@ -80,12 +83,40 @@ func Test_tail(t *testing.T) {
 	content := []byte{0x0, 0xff}
 	bf := BitField{}
 	bf.Assign(content, 12)
+	// 000000001111|1111
 	if bf.Count() != 4 {
-		t.Errorf("Count mot match %d", bf.Count())
+		t.Errorf("Count not match %d", bf.Count())
 	}
 
 	if bf.GetBit(11) != true || bf.GetBit(10) != true || bf.GetBit(9) != true || bf.GetBit(8) != true || bf.GetBit(6) != false {
 		t.Errorf("Wrong bits")
+	}
+
+	// test read-write
+	data := []byte{0x00, 0x00, 0x00, 0x00}
+	sb := StateBuffer{Data: data}
+	sb.Write(bf)
+	if sb.Error() != nil {
+		t.Errorf("Unable to write bit field: %v", sb.Error())
+	}
+
+	if bf.Size() != 4 {
+		t.Errorf("Size of bit field is not correct: %v", bf.Size())
+	}
+
+	if !bytes.Equal(data, []byte{0x0c, 0x00, 0x00, 0xf0}) {
+		t.Errorf("Res %v not equal  expected %v", data, []byte{0x0c, 0x00, 0x00, 0xf0})
+	}
+
+	sb2 := StateBuffer{Data: data}
+	bf2 := BitField{}
+	sb2.Read(&bf2)
+	if sb2.Error() != nil {
+		t.Errorf("Can not read bit field %v", sb2.Error())
+	}
+
+	if bf2.GetBit(11) != true || bf2.GetBit(10) != true || bf2.GetBit(9) != true || bf2.GetBit(8) != true || bf2.GetBit(6) != false {
+		t.Errorf("Wrong bits on bf2")
 	}
 }
 

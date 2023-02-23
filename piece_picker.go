@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/a-pavlov/ged2k/data"
+	"github.com/a-pavlov/ged2k/proto"
 	"sync"
 )
 
@@ -28,7 +28,7 @@ func (pp PiecePicker) BlocksInPiece(pieceIndex int) int {
 		return pp.BlocksInLastPiece
 	}
 
-	return data.BLOCKS_PER_PIECE
+	return proto.BLOCKS_PER_PIECE
 }
 
 /*
@@ -53,8 +53,8 @@ func (pp PiecePicker) getDownloadingPiece(pieceIndex int) *DownloadingPiece {
 	return nil
 }
 
-func (pp *PiecePicker) addDownloadingBlocks(requiredBlocksCount int, peer *Peer, endGame bool) []data.PieceBlock {
-	res := []data.PieceBlock{}
+func (pp *PiecePicker) addDownloadingBlocks(requiredBlocksCount int, peer *Peer, endGame bool) []proto.PieceBlock {
+	res := []proto.PieceBlock{}
 	for _, dp := range pp.downloadingPieces {
 		res = append(res, dp.PickBlock(requiredBlocksCount-len(res), peer, endGame)...)
 		if len(res) == requiredBlocksCount {
@@ -101,7 +101,7 @@ func (pp *PiecePicker) piecesCount() (int, int, int) {
 	return none, downloading, have
 }
 
-func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer *Peer) []data.PieceBlock {
+func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer *Peer) []proto.PieceBlock {
 	pp.mutex.Lock()
 	res := pp.addDownloadingBlocks(requiredBlocksCount, peer, false)
 
@@ -121,7 +121,7 @@ func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer *Peer) []data.Pi
 	return res
 }
 
-func (pp *PiecePicker) AbortBlock(block data.PieceBlock, peer *Peer) bool {
+func (pp *PiecePicker) AbortBlock(block proto.PieceBlock, peer *Peer) bool {
 	pp.mutex.Lock()
 	defer pp.mutex.Unlock()
 	dp := pp.getDownloadingPiece(block.PieceIndex)
@@ -194,6 +194,10 @@ func (pp *PiecePicker) IsFinished() bool {
 	}
 
 	return true
+}
+
+func (pp *PiecePicker) UpdateResumeData(atp *proto.AddTransferParameters) {
+
 }
 
 func remove(s []*DownloadingPiece, i int) []*DownloadingPiece {

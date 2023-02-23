@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/a-pavlov/ged2k/data"
+	"github.com/a-pavlov/ged2k/proto"
 	"golang.org/x/crypto/md4"
 	"testing"
 )
@@ -9,12 +9,12 @@ import (
 func Test_ReceivedPiece(t *testing.T) {
 	rp := ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
 
-	pb0 := PendingBlock{block: data.PieceBlock{0, 0}, data: make([]byte, 20)}
-	pb1 := PendingBlock{block: data.PieceBlock{0, 1}, data: make([]byte, 20)}
-	pb2 := PendingBlock{block: data.PieceBlock{0, 2}, data: make([]byte, 20)}
-	pb3 := PendingBlock{block: data.PieceBlock{0, 3}, data: make([]byte, 20)}
-	pb4 := PendingBlock{block: data.PieceBlock{0, 4}, data: make([]byte, 20)}
-	pb5 := PendingBlock{block: data.PieceBlock{0, 5}, data: make([]byte, 20)}
+	pb0 := PendingBlock{block: proto.PieceBlock{0, 0}, data: make([]byte, 20)}
+	pb1 := PendingBlock{block: proto.PieceBlock{0, 1}, data: make([]byte, 20)}
+	pb2 := PendingBlock{block: proto.PieceBlock{0, 2}, data: make([]byte, 20)}
+	pb3 := PendingBlock{block: proto.PieceBlock{0, 3}, data: make([]byte, 20)}
+	pb4 := PendingBlock{block: proto.PieceBlock{0, 4}, data: make([]byte, 20)}
+	pb5 := PendingBlock{block: proto.PieceBlock{0, 5}, data: make([]byte, 20)}
 
 	rp.InsertBlock(&pb3)
 	if rp.hashBlockIndex != 0 {

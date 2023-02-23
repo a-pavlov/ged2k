@@ -524,6 +524,10 @@ func (bc ByteContainer) Size() int {
 	return DataSize(uint16(1)) + DataSize([]byte(bc[:]))
 }
 
+func String2ByteContainer(s string) ByteContainer {
+	return []byte(s)
+}
+
 type PacketHeader struct {
 	Protocol byte
 	Bytes    uint32
