@@ -116,10 +116,10 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				peerConnection.lastError = sb.Error()
 				break
 			} else {
-				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.H)
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 			}
 			// req filename
-			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.H)
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 
 		case ph.Packet == proto.OP_REQUESTFILENAME:
 		case ph.Packet == proto.OP_REQFILENAMEANSWER:
@@ -129,7 +129,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				peerConnection.lastError = sb.Error()
 				break
 			} else {
-				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &peerConnection.transfer.H)
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &peerConnection.transfer.Hash)
 			}
 		case ph.Packet == proto.OP_CANCELTRANSFER:
 			// cancel transfer received
@@ -144,7 +144,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			}
 
-			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.H)
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.Hash)
 			// got file status answer
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
@@ -162,7 +162,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			}
 
 			peerConnection.transfer.hashSetChan <- &hs
-			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &hs.H)
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &hs.Hash)
 		case ph.Packet == proto.OP_STARTUPLOADREQ:
 			// receive start upload request
 		case ph.Packet == proto.OP_ACCEPTUPLOADREQ:

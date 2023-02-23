@@ -10,22 +10,22 @@ const SRC_EXT_OFFSET int = 10
 const CAPTHA_OFFSET int = 11
 
 type HelloAnswer struct {
-	H           Hash
+	Hash        EMuleHash
 	Point       Endpoint
 	Properties  TagCollection
 	ServerPoint Endpoint
 }
 
 func (ha *HelloAnswer) Get(sb *StateBuffer) *StateBuffer {
-	return sb.Read(&ha.H).Read(&ha.Point).Read(&ha.Properties).Read(&ha.ServerPoint)
+	return sb.Read(&ha.Hash).Read(&ha.Point).Read(&ha.Properties).Read(&ha.ServerPoint)
 }
 
 func (ha HelloAnswer) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(ha.H).Write(ha.Point).Write(ha.Properties).Write(ha.ServerPoint)
+	return sb.Write(ha.Hash).Write(ha.Point).Write(ha.Properties).Write(ha.ServerPoint)
 }
 
 func (ha HelloAnswer) Size() int {
-	return DataSize(ha.H) + DataSize(ha.Point) + DataSize(ha.Properties) + DataSize(ha.ServerPoint)
+	return DataSize(ha.Hash) + DataSize(ha.Point) + DataSize(ha.Properties) + DataSize(ha.ServerPoint)
 }
 
 type ExtHello struct {
@@ -47,53 +47,53 @@ func (eh ExtHello) Size() int {
 }
 
 type FileAnswer struct {
-	H    Hash
+	Hash EMuleHash
 	Name ByteContainer
 }
 
 func (fa *FileAnswer) Get(sb *StateBuffer) *StateBuffer {
-	return sb.Read(&fa.H).Read(&fa.Name)
+	return sb.Read(&fa.Hash).Read(&fa.Name)
 }
 
 func (fa FileAnswer) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(fa.H).Write(fa.Name)
+	return sb.Write(fa.Hash).Write(fa.Name)
 }
 
 func (fa FileAnswer) Size() int {
-	return DataSize(fa.H) + DataSize(fa.Name)
+	return DataSize(fa.Hash) + DataSize(fa.Name)
 }
 
 type FileStatusAnswer struct {
-	H  Hash
-	BF BitField
+	Hash EMuleHash
+	BF   BitField
 }
 
 func (fs *FileStatusAnswer) Get(sb *StateBuffer) *StateBuffer {
-	return sb.Read(&fs.H).Read(&fs.BF)
+	return sb.Read(&fs.Hash).Read(&fs.BF)
 }
 
 func (fs FileStatusAnswer) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(fs.H).Write(fs.BF)
+	return sb.Write(fs.Hash).Write(fs.BF)
 }
 
 func (fs FileStatusAnswer) Size() int {
-	return DataSize(fs.H) + DataSize(fs.BF)
+	return DataSize(fs.Hash) + DataSize(fs.BF)
 }
 
 type HashSet struct {
-	H           Hash
-	PieceHashes []Hash
+	Hash        EMuleHash
+	PieceHashes []EMuleHash
 }
 
 func (hs *HashSet) Get(sb *StateBuffer) *StateBuffer {
-	sb.Read(&hs.H)
+	sb.Read(&hs.Hash)
 	size := sb.ReadUint16()
 	if int(size) > MAX_ELEMS {
 		sb.err = fmt.Errorf("elems count too large %v", size)
 		return sb
 	}
 
-	hs.PieceHashes = make([]Hash, int(size))
+	hs.PieceHashes = make([]EMuleHash, int(size))
 	for i, _ := range hs.PieceHashes {
 		sb.Read(&hs.PieceHashes[i])
 	}
@@ -102,7 +102,7 @@ func (hs *HashSet) Get(sb *StateBuffer) *StateBuffer {
 }
 
 func (hs HashSet) Put(sb *StateBuffer) *StateBuffer {
-	sb.Write(hs.H).Write(uint16(len(hs.PieceHashes)))
+	sb.Write(hs.Hash).Write(uint16(len(hs.PieceHashes)))
 	for _, x := range hs.PieceHashes {
 		sb.Write(x)
 	}
@@ -110,17 +110,17 @@ func (hs HashSet) Put(sb *StateBuffer) *StateBuffer {
 }
 
 func (hs HashSet) Size() int {
-	return DataSize(hs.H) + DataSize(uint16(len(hs.PieceHashes))) + len(hs.PieceHashes)*DataSize(hs.H)
+	return DataSize(hs.Hash) + DataSize(uint16(len(hs.PieceHashes))) + len(hs.PieceHashes)*DataSize(hs.Hash)
 }
 
 type RequestParts32 struct {
-	H           Hash
+	Hash        EMuleHash
 	BeginOffset [PARTS_IN_REQUEST]uint32
 	EndOffset   [PARTS_IN_REQUEST]uint32
 }
 
 func (rp *RequestParts32) Get(sb *StateBuffer) *StateBuffer {
-	sb.Read(&rp.H)
+	sb.Read(&rp.Hash)
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
 		rp.BeginOffset[i] = sb.ReadUint32()
 	}
@@ -131,7 +131,7 @@ func (rp *RequestParts32) Get(sb *StateBuffer) *StateBuffer {
 }
 
 func (rp RequestParts32) Put(sb *StateBuffer) *StateBuffer {
-	sb.Write(rp.H)
+	sb.Write(rp.Hash)
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
 		sb.Write(rp.BeginOffset[i])
 	}
@@ -142,17 +142,17 @@ func (rp RequestParts32) Put(sb *StateBuffer) *StateBuffer {
 }
 
 func (rp RequestParts32) Size() int {
-	return DataSize(rp.H) + DataSize(rp.BeginOffset[:])*2
+	return DataSize(rp.Hash) + DataSize(rp.BeginOffset[:])*2
 }
 
 type RequestParts64 struct {
-	H           Hash
+	Hash        EMuleHash
 	BeginOffset [PARTS_IN_REQUEST]uint64
 	EndOffset   [PARTS_IN_REQUEST]uint64
 }
 
 func (rp *RequestParts64) Get(sb *StateBuffer) *StateBuffer {
-	sb.Read(&rp.H)
+	sb.Read(&rp.Hash)
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
 		rp.BeginOffset[i] = sb.ReadUint64()
 	}
@@ -163,7 +163,7 @@ func (rp *RequestParts64) Get(sb *StateBuffer) *StateBuffer {
 }
 
 func (rp RequestParts64) Put(sb *StateBuffer) *StateBuffer {
-	sb.Write(rp.H)
+	sb.Write(rp.Hash)
 	for i := 0; i < PARTS_IN_REQUEST; i++ {
 		sb.Write(rp.BeginOffset[i])
 	}
@@ -174,7 +174,7 @@ func (rp RequestParts64) Put(sb *StateBuffer) *StateBuffer {
 }
 
 func (rp RequestParts64) Size() int {
-	return DataSize(rp.H) + DataSize(rp.BeginOffset[:])*2
+	return DataSize(rp.Hash) + DataSize(rp.BeginOffset[:])*2
 }
 
 type MiscOptions struct {
@@ -254,14 +254,14 @@ func (mo *MiscOptions2) SetLargeFiles() {
 }
 
 type SendingPart struct {
-	H        Hash
+	Hash     EMuleHash
 	Begin    uint64
 	End      uint64
 	Extended bool
 }
 
 func (sp *SendingPart) Get(sb *StateBuffer) *StateBuffer {
-	sb.Read(&sp.H)
+	sb.Read(&sp.Hash)
 	if sp.Extended {
 		return sb.Read(&sp.Begin).Read(&sp.End)
 	}
@@ -272,7 +272,7 @@ func (sp *SendingPart) Get(sb *StateBuffer) *StateBuffer {
 }
 
 func (sp *SendingPart) Put(sb *StateBuffer) *StateBuffer {
-	sb.Write(sp.H)
+	sb.Write(sp.Hash)
 	if sp.Extended {
 		return sb.Write(sp.Begin).Write(sp.End)
 	}
@@ -288,18 +288,18 @@ func (sp SendingPart) Size() int {
 		size *= 2
 	}
 
-	return size + DataSize(sp.H)
+	return size + DataSize(sp.Hash)
 }
 
 type CompressedPart struct {
-	H                    Hash
+	Hash                 EMuleHash
 	Offset               uint64
 	CompressedDataLength uint32
 	Extended             bool
 }
 
 func (cp *CompressedPart) Get(sb *StateBuffer) *StateBuffer {
-	sb.Read(&cp.H)
+	sb.Read(&cp.Hash)
 	if !cp.Extended {
 		cp.Offset = uint64(sb.ReadUint32())
 	} else {
@@ -310,7 +310,7 @@ func (cp *CompressedPart) Get(sb *StateBuffer) *StateBuffer {
 }
 
 func (cp *CompressedPart) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(cp.H).Write(uint32(cp.Offset)).Write(cp.CompressedDataLength)
+	return sb.Write(cp.Hash).Write(uint32(cp.Offset)).Write(cp.CompressedDataLength)
 }
 
 func (cp CompressedPart) Size() int {
@@ -318,5 +318,5 @@ func (cp CompressedPart) Size() int {
 	if cp.Extended {
 		size = DataSize(cp.Offset)
 	}
-	return size + DataSize(cp.H) + DataSize(cp.CompressedDataLength)
+	return size + DataSize(cp.Hash) + DataSize(cp.CompressedDataLength)
 }

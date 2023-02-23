@@ -30,12 +30,12 @@ const GED2K_VERSION_MINOR = 1
 const GED2K_VERSION_TINY = 0
 
 type FoundFileSources struct {
-	H       Hash
+	Hash    EMuleHash
 	Sources []Endpoint
 }
 
 func (fs *FoundFileSources) Get(sb *StateBuffer) *StateBuffer {
-	sb.Read(&fs.H)
+	sb.Read(&fs.Hash)
 	sz := sb.ReadUint8()
 	if sb.Error() == nil {
 		for i := 0; i < int(sz); i++ {
@@ -53,11 +53,11 @@ func (fs *FoundFileSources) Get(sb *StateBuffer) *StateBuffer {
 
 func (fs *FoundFileSources) Put(sb *StateBuffer) *StateBuffer {
 	var sz uint8 = uint8(len(fs.Sources))
-	return sb.Write(fs.H).Write(sz).Write(fs.Sources)
+	return sb.Write(fs.Hash).Write(sz).Write(fs.Sources)
 }
 
 func (fs FoundFileSources) Size() int {
-	res := DataSize(byte(len(fs.Sources))) + DataSize(fs.H)
+	res := DataSize(byte(len(fs.Sources))) + DataSize(fs.Hash)
 	for _, x := range fs.Sources {
 		res += DataSize(x)
 	}

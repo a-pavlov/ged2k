@@ -12,9 +12,9 @@ import (
 type Transfer struct {
 	pause              bool
 	stopped            bool
-	hashSet            []proto.Hash
+	hashSet            []proto.EMuleHash
 	needSaveResumeData bool
-	H                  proto.Hash
+	Hash               proto.EMuleHash
 	connections        []*PeerConnection
 	policy             Policy
 	piecePicker        *PiecePicker
@@ -31,8 +31,8 @@ type Transfer struct {
 	incomingPieces     map[int]*ReceivingPiece
 }
 
-func CreateTransfer(hash proto.Hash, size uint64, file *os.File) *Transfer {
-	return &Transfer{H: hash,
+func CreateTransfer(hash proto.EMuleHash, size uint64, file *os.File) *Transfer {
+	return &Transfer{Hash: hash,
 		cmdChan:        make(chan string),
 		dataChan:       make(chan *PendingBlock, 10),
 		sourcesChan:    make(chan proto.FoundFileSources),
@@ -116,7 +116,7 @@ func (t *Transfer) Start(s *Session) {
 
 		case peerConnection := <-t.peerConnChan:
 			blocks := t.piecePicker.PickPieces(data.REQUEST_QUEUE_SIZE, peerConnection.peer)
-			req := proto.RequestParts64{H: peerConnection.transfer.H}
+			req := proto.RequestParts64{Hash: peerConnection.transfer.Hash}
 			for i, x := range blocks {
 				pb := CreatePendingBlock(x, peerConnection.transfer.Size)
 				peerConnection.requestedBlocks = append(peerConnection.requestedBlocks, &pb)

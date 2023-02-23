@@ -16,7 +16,7 @@ type Session struct {
 	wg              sync.WaitGroup
 	listener        net.Listener
 	peerConnections []*PeerConnection
-	transfers       map[proto.Hash]*Transfer
+	transfers       map[proto.EMuleHash]*Transfer
 
 	// server section
 	serverConnection           *ServerConnection
@@ -351,7 +351,7 @@ func (s *Session) GetServerList() {
 
 func (s *Session) CreateHelloAnswer() proto.HelloAnswer {
 	hello := proto.HelloAnswer{}
-	hello.H = s.configuration.UserAgent
+	hello.Hash = s.configuration.UserAgent
 	hello.Point.Ip = s.ClientId
 	hello.Point.Port = s.configuration.ListenPort
 

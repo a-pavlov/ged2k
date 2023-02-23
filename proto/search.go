@@ -499,7 +499,7 @@ func (sm SearchMore) Size() int {
 }
 
 type GetFileSources struct {
-	H       Hash
+	H       EMuleHash
 	LowPart uint32
 	HiPart  uint32
 }
@@ -558,7 +558,7 @@ func (sr SearchResult) Size() int {
 }
 
 type SearchItem struct {
-	H               Hash
+	H               EMuleHash
 	Point           Endpoint
 	Filename        string
 	Filesize        uint64
@@ -570,7 +570,7 @@ type SearchItem struct {
 }
 
 func ToSearchItem(up *UsualPacket) SearchItem {
-	res := SearchItem{H: up.H, Point: up.Point}
+	res := SearchItem{H: up.Hash, Point: up.Point}
 	for _, x := range up.Properties {
 		switch x.Id {
 		case FT_FILENAME:

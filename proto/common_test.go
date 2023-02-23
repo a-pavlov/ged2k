@@ -50,15 +50,15 @@ func Test_hash(t *testing.T) {
 	arr = h.Sum(arr)
 
 	if len(arr) != 16 {
-		t.Error("Hash obtain wrong size")
+		t.Error("EMuleHash obtain wrong size")
 	}
 
-	//t.Errorf("Hash calculated %x", arr)
+	//t.Errorf("EMuleHash calculated %x", arr)
 
-	var term Hash = Terminal
-	var ed2k Hash = LIBED2K
+	var term EMuleHash = Terminal
+	var ed2k EMuleHash = LIBED2K
 
-	var h3 Hash
+	var h3 EMuleHash
 	if h3 == term {
 		t.Errorf("Hashes must not be equal")
 	}
@@ -67,10 +67,10 @@ func Test_hash(t *testing.T) {
 	sw := StateBuffer{Data: buf}
 	term.Put(ed2k.Put(&sw))
 	if sw.err != nil {
-		t.Errorf("Hash serialize error %v", sw.err)
+		t.Errorf("EMuleHash serialize error %v", sw.err)
 	}
 
-	var h4, h5 Hash
+	var h4, h5 EMuleHash
 	sr := StateBuffer{Data: buf}
 	h4.Get(h5.Get(&sr))
 
@@ -88,9 +88,9 @@ func Test_hash(t *testing.T) {
 }
 
 func Test_Hash2(t *testing.T) {
-	var h1 Hash
-	var h2 Hash
-	var h3 Hash
+	var h1 EMuleHash
+	var h2 EMuleHash
+	var h3 EMuleHash
 	h1 = EMULE
 	h2 = EMULE
 	h3 = LIBED2K
@@ -114,7 +114,7 @@ func Test_pieceHash(t *testing.T) {
 	for offset < size {
 		currBlockSize := Min(size-offset, len(data))
 		hash.Write(data[:currBlockSize])
-		fmt.Println("Hash for bytes", currBlockSize)
+		fmt.Println("EMuleHash for bytes", currBlockSize)
 		offset += currBlockSize
 		blocksProcessed++
 	}
@@ -127,7 +127,7 @@ func Test_pieceHash(t *testing.T) {
 	arr = hash.Sum(arr)
 
 	if len(arr) != 16 {
-		t.Errorf("Hash size is not corrrect: %d", len(arr))
+		t.Errorf("EMuleHash size is not corrrect: %d", len(arr))
 	}
 
 	expected := []byte{0x79, 0x32, 0x4E, 0x42, 0x16, 0x02, 0x25, 0x1A, 0x39, 0x93, 0x6D, 0x7E, 0x8B, 0xC6, 0x41, 0x25}
@@ -144,7 +144,7 @@ func Test_HashStrings(t *testing.T) {
 	}
 
 	if h.ToString() != "31D6CFE0D16AE931B73C59D7E0C089C0" {
-		t.Errorf("Hash format to string is not correct %v", h.ToString())
+		t.Errorf("EMuleHash format to string is not correct %v", h.ToString())
 	}
 
 	if EMULE.ToString() != "31D6CFE0D10EE931B73C59D7E0C06FC0" {
@@ -548,7 +548,7 @@ func Test_usualPacket(t *testing.T) {
 	var capability uint32 = 0x77
 
 	var hello UsualPacket
-	hello.H = LIBED2K
+	hello.Hash = LIBED2K
 	hello.Point = Endpoint{Ip: 0, Port: 20033}
 	hello.Properties = append(hello.Properties, CreateTag(version, CT_VERSION, ""))
 	hello.Properties = append(hello.Properties, CreateTag(capability, CT_SERVER_FLAGS, ""))
@@ -576,8 +576,8 @@ func Test_usualPacket(t *testing.T) {
 				t.Errorf("Hello 2 prop len wrong %d", len(hello2.Properties))
 			}
 
-			if !bytes.Equal(hello.H[:], LIBED2K[:]) {
-				t.Errorf("Hello 2 hash incorrect %x", hello2.H)
+			if !bytes.Equal(hello.Hash[:], LIBED2K[:]) {
+				t.Errorf("Hello 2 hash incorrect %x", hello2.Hash)
 			}
 		}
 	}
@@ -637,7 +637,7 @@ func Test_IdSoftReading(t *testing.T) {
 
 func Test_CollectionSize(t *testing.T) {
 	data := []Endpoint{Endpoint{Ip: 1, Port: 2}, Endpoint{Ip: 3, Port: 4}}
-	fs := FoundFileSources{H: EMULE, Sources: data}
+	fs := FoundFileSources{Hash: EMULE, Sources: data}
 	if DataSize(fs) != 16+1+12 {
 		t.Errorf("Size of collection with two endpoint is wrong %d expected 16+1+12", DataSize(data))
 	}

@@ -7,8 +7,8 @@ import (
 )
 
 func Test_requests(t *testing.T) {
-	rp32 := RequestParts32{H: LIBED2K, BeginOffset: [PARTS_IN_REQUEST]uint32{uint32(0), uint32(1), uint32(2)}, EndOffset: [PARTS_IN_REQUEST]uint32{uint32(3), uint32(4), uint32(5)}}
-	rp64 := RequestParts64{H: LIBED2K, BeginOffset: [PARTS_IN_REQUEST]uint64{uint64(6), uint64(7), uint64(8)}, EndOffset: [PARTS_IN_REQUEST]uint64{uint64(9), uint64(10), uint64(11)}}
+	rp32 := RequestParts32{Hash: LIBED2K, BeginOffset: [PARTS_IN_REQUEST]uint32{uint32(0), uint32(1), uint32(2)}, EndOffset: [PARTS_IN_REQUEST]uint32{uint32(3), uint32(4), uint32(5)}}
+	rp64 := RequestParts64{Hash: LIBED2K, BeginOffset: [PARTS_IN_REQUEST]uint64{uint64(6), uint64(7), uint64(8)}, EndOffset: [PARTS_IN_REQUEST]uint64{uint64(9), uint64(10), uint64(11)}}
 	if DataSize(rp32) != 40 {
 		t.Errorf("Size of request 32 is not correct %d\n", DataSize(rp32))
 	}
@@ -42,7 +42,7 @@ func Test_requests(t *testing.T) {
 }
 
 func Test_HashSet(t *testing.T) {
-	hs := HashSet{H: EMULE, PieceHashes: []Hash{EMULE, LIBED2K, Terminal}}
+	hs := HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, LIBED2K, Terminal}}
 	data := make([]byte, 16+2+16*3)
 	sb := StateBuffer{Data: data}
 	sb.Write(hs)
@@ -53,7 +53,7 @@ func Test_HashSet(t *testing.T) {
 	fmt.Printf("data %v", data)
 
 	if hs.Size() != 16+2+16*3 {
-		t.Errorf("Hash set size is not correct %v", hs.Size())
+		t.Errorf("EMuleHash set size is not correct %v", hs.Size())
 	}
 
 	hs2 := HashSet{}
@@ -62,11 +62,11 @@ func Test_HashSet(t *testing.T) {
 	if sb2.Error() != nil {
 		t.Errorf("can not read hash set")
 	} else {
-		if !bytes.Equal(hs2.H[:], hs.H[:]) {
+		if !bytes.Equal(hs2.Hash[:], hs.Hash[:]) {
 			t.Errorf("Hashes are not equal")
 		} else {
 			if len(hs.PieceHashes) != len(hs2.PieceHashes) {
-				t.Errorf("Hash sets size are not equal")
+				t.Errorf("EMuleHash sets size are not equal")
 			}
 
 			for i := 0; i < len(hs.PieceHashes); i++ {

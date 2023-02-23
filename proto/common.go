@@ -321,35 +321,35 @@ func (s *Some) Put(sb *StateBuffer) *StateBuffer {
 
 const HASH_LEN int = 16
 
-type Hash [HASH_LEN]byte
+type EMuleHash [HASH_LEN]byte
 
-var Terminal = Hash{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x6A, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x89, 0xC0}
-var LIBED2K = Hash{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x4C, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x4B, 0xC0}
-var EMULE = Hash{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x0E, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x6F, 0xC0}
-var ZERO = Hash{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
+var Terminal = EMuleHash{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x6A, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x89, 0xC0}
+var LIBED2K = EMuleHash{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x4C, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x4B, 0xC0}
+var EMULE = EMuleHash{0x31, 0xD6, 0xCF, 0xE0, 0xD1, 0x0E, 0xE9, 0x31, 0xB7, 0x3C, 0x59, 0xD7, 0xE0, 0xC0, 0x6F, 0xC0}
+var ZERO = EMuleHash{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
 
-func (h *Hash) Get(sb *StateBuffer) *StateBuffer {
+func (h *EMuleHash) Get(sb *StateBuffer) *StateBuffer {
 	return sb.Read(h[:])
 }
 
-func (h Hash) Put(sb *StateBuffer) *StateBuffer {
+func (h EMuleHash) Put(sb *StateBuffer) *StateBuffer {
 	return sb.Write(h[:])
 }
 
-func (h Hash) Size() int {
+func (h EMuleHash) Size() int {
 	return 16
 }
 
-func (h Hash) Equals(hash Hash) bool {
+func (h EMuleHash) Equals(hash EMuleHash) bool {
 	return bytes.Equal(h[:], hash[:])
 }
 
-func (h Hash) ToString() string {
+func (h EMuleHash) ToString() string {
 	return strings.ToUpper(hex.EncodeToString(h[:]))
 }
 
-func String2Hash(s string) Hash {
-	var h Hash
+func String2Hash(s string) EMuleHash {
+	var h EMuleHash
 	src := []byte(s)
 	n, err := hex.Decode(h[:], src)
 	if err != nil || n != HASH_LEN {
@@ -484,21 +484,21 @@ func (c TagCollection) Size() int {
 }
 
 type UsualPacket struct {
-	H          Hash
+	Hash       EMuleHash
 	Point      Endpoint
 	Properties TagCollection
 }
 
 func (up *UsualPacket) Get(sb *StateBuffer) *StateBuffer {
-	return sb.Read(&up.H).Read(&up.Point).Read(&up.Properties)
+	return sb.Read(&up.Hash).Read(&up.Point).Read(&up.Properties)
 }
 
 func (up UsualPacket) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(up.H).Write(up.Point).Write(up.Properties)
+	return sb.Write(up.Hash).Write(up.Point).Write(up.Properties)
 }
 
 func (up UsualPacket) Size() int {
-	return DataSize(up.H) + DataSize(up.Point) + DataSize(up.Properties)
+	return DataSize(up.Hash) + DataSize(up.Point) + DataSize(up.Properties)
 }
 
 type ByteContainer []byte

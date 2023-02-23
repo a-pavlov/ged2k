@@ -38,7 +38,7 @@ func (serverConnection *ServerConnection) Start(s *Session) {
 	var capability uint32 = proto.CAPABLE_AUXPORT | proto.CAPABLE_NEWTAGS | proto.CAPABLE_UNICODE | proto.CAPABLE_LARGEFILES | proto.CAPABLE_ZLIB
 
 	var hello proto.UsualPacket
-	hello.H = proto.EMULE
+	hello.Hash = proto.EMULE
 	hello.Point = proto.Endpoint{Ip: 0, Port: 20033}
 	hello.Properties = append(hello.Properties, proto.CreateTag(version, proto.CT_VERSION, ""))
 	hello.Properties = append(hello.Properties, proto.CreateTag(capability, proto.CT_SERVER_FLAGS, ""))

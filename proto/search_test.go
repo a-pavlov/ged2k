@@ -112,7 +112,7 @@ func Test_searchRes(t *testing.T) {
 	var capability uint32 = 0x77
 
 	var hello UsualPacket
-	hello.H = LIBED2K
+	hello.Hash = LIBED2K
 	hello.Point = Endpoint{Ip: 0, Port: 20033}
 	hello.Properties = append(hello.Properties, CreateTag(version, CT_VERSION, ""))
 	hello.Properties = append(hello.Properties, CreateTag(capability, CT_SERVER_FLAGS, ""))
