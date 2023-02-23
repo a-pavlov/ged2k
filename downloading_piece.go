@@ -61,7 +61,7 @@ func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGa
 	return res
 }
 
-func (dp *DownloadingPiece) AbortBlock(blockIndex int, peer Peer) {
+func (dp *DownloadingPiece) AbortBlock(blockIndex int, peer *Peer) {
 	if blockIndex > len(dp.blocks) {
 		panic("block index is out of range")
 	}

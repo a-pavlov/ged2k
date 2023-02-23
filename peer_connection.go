@@ -69,6 +69,7 @@ type PeerConnection struct {
 	lastError       error
 	stat            Statistics
 	requestedBlocks []*PendingBlock
+	closedByRequest bool
 }
 
 func (peerConnection *PeerConnection) Start(s *Session) {
@@ -115,8 +116,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				peerConnection.lastError = sb.Error()
 				break
 			} else {
-				h := proto.Hash{}
-				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &h)
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.H)
 			}
 			// req filename
 			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.H)
@@ -129,8 +129,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				peerConnection.lastError = sb.Error()
 				break
 			} else {
-				h := proto.Hash{}
-				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &h)
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &peerConnection.transfer.H)
 			}
 		case ph.Packet == proto.OP_CANCELTRANSFER:
 			// cancel transfer received
@@ -145,9 +144,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			}
 
-			h := proto.Hash{}
-			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &h)
-
+			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.H)
 			// got file status answer
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
@@ -164,6 +161,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			}
 
+			peerConnection.transfer.hashSetChan <- &hs
 			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &hs.H)
 		case ph.Packet == proto.OP_STARTUPLOADREQ:
 			// receive start upload request
@@ -296,6 +294,14 @@ func (connection *PeerConnection) SendPacket(protocol byte, packet byte, data pr
 
 func (conneection *PeerConnection) receiveCompressedData(offset uint64, compressedLength uint64, payloadSize int) {
 
+}
+
+func (peerConnection *PeerConnection) Close() {
+	peerConnection.closedByRequest = true
+	err := peerConnection.connection.Close()
+	if err != nil {
+		fmt.Printf("unable to close peed connection %v", err)
+	}
 }
 
 func (connection *PeerConnection) receiveData(begin uint64, end uint64, compressed bool) {

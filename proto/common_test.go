@@ -137,6 +137,21 @@ func Test_pieceHash(t *testing.T) {
 
 }
 
+func Test_HashStrings(t *testing.T) {
+	h := String2Hash("31D6CFE0D16AE931B73C59D7E0C089C0")
+	if !h.Equals(Terminal) {
+		t.Errorf("From string hash is not terminal %v", h)
+	}
+
+	if h.ToString() != "31D6CFE0D16AE931B73C59D7E0C089C0" {
+		t.Errorf("Hash format to string is not correct %v", h.ToString())
+	}
+
+	if EMULE.ToString() != "31D6CFE0D10EE931B73C59D7E0C06FC0" {
+		t.Errorf("EMULE to string error %v", EMULE.ToString())
+	}
+}
+
 func Test_byteContainer(t *testing.T) {
 	buf := make([]byte, 5)
 	bc := []byte{0x01, 0x02, 0x03}

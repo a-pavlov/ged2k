@@ -16,7 +16,7 @@ type Session struct {
 	wg              sync.WaitGroup
 	listener        net.Listener
 	peerConnections []*PeerConnection
-	transfers       []*Transfer
+	transfers       map[proto.Hash]*Transfer
 
 	// server section
 	serverConnection           *ServerConnection
@@ -27,6 +27,9 @@ type Session struct {
 	// peer connection
 	registerPeerConnection   chan *PeerConnection
 	unregisterPeerConnection chan *PeerConnection
+
+	//transfer
+	transferChan chan *Transfer
 
 	ClientId uint32
 	stat     Statistics
@@ -264,19 +267,28 @@ func (s *Session) Tick() {
 			s.peerConnections = removePeerConnection(peerConnection, s.peerConnections)
 			if peerConnection.transfer != nil {
 				peerConnection.transfer.connections = removePeerConnection(peerConnection, peerConnection.transfer.connections)
+				// abort all blocks we have requested for now
+				for _, x := range peerConnection.requestedBlocks {
+					peerConnection.transfer.piecePicker.AbortBlock(x.block, peerConnection.peer)
+				}
 			}
 
 			if peerConnection.peer != nil {
 				peerConnection.peer.peerConnection = nil
 				peerConnection.peer.LastConnected = time.Now()
 				// check error somehow
-				if peerConnection.lastError != nil {
+				if !peerConnection.closedByRequest && peerConnection.lastError != nil {
 					peerConnection.peer.FailCount += 1
 				}
 			}
 
 			peerConnection.transfer = nil
 			peerConnection.peer = nil
+		case transfer := <-s.transferChan:
+			for _, x := range transfer.connections {
+				x.Close()
+			}
+			transfer.connections = transfer.connections[:0]
 		}
 	}
 
@@ -298,6 +310,15 @@ func (s *Session) Start() {
 
 func (s *Session) Stop() {
 	fmt.Println("Session stop requested")
+	for _, x := range s.transfers {
+		x.Stop()
+	}
+
+	// close all peer connections
+	for _, x := range s.peerConnections {
+		x.Close()
+	}
+
 	close(s.comm)
 	if s.serverConnection != nil {
 		s.serverConnection.connection.Close()

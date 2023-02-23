@@ -11,7 +11,7 @@ import (
 
 type Transfer struct {
 	pause              bool
-	stop               bool
+	stopped            bool
 	hashSet            []proto.Hash
 	needSaveResumeData bool
 	H                  proto.Hash
@@ -54,26 +54,20 @@ func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) 
 }
 
 func (t *Transfer) IsPaused() bool {
-	//t.mutex.Lock()
-	//defer t.mutex.Unlock()
 	return t.pause
 }
 
 func (t *Transfer) IsNeedSaveResumeData() bool {
-	//t.mutex.Lock()
-	//defer t.mutex.Unlock()
 	return t.needSaveResumeData
 }
 
 func (t *Transfer) AttachPeer(connection *PeerConnection) {
-	//t.mutex.Lock()
-	//defer t.mutex.Unlock()
 	t.policy.newConnection(connection)
 	t.connections = append(t.connections, connection)
 	connection.transfer = t
 }
 
-func (t *Transfer) Start() {
+func (t *Transfer) Start(s *Session) {
 	t.waitGroup.Add(1)
 	var hs *proto.HashSet
 	defer t.waitGroup.Done()
@@ -109,6 +103,14 @@ func (t *Transfer) Start() {
 					for _, x := range rp.blocks {
 						t.file.Write(x.data)
 					}
+
+					wasFinished := t.piecePicker.IsFinished()
+					t.piecePicker.SetHave(pb.block.PieceIndex)
+					delete(t.incomingPieces, pb.block.PieceIndex)
+					if !wasFinished && t.piecePicker.IsFinished() {
+						// disconnect all peers
+						// status finished
+					}
 				}
 			}
 
@@ -130,6 +132,7 @@ func (t *Transfer) Start() {
 }
 
 func (t *Transfer) Stop() {
+	t.stopped = true
 	close(t.cmdChan)
 	t.waitGroup.Wait()
 }

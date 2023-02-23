@@ -13,7 +13,7 @@ const END_GAME_DOWN_PIECES_LIMIT int = 4
 
 type PiecePicker struct {
 	mutex             sync.RWMutex
-	PieceCount        int
+	PieceCount        int // full pieces count + 1 partial
 	BlocksInLastPiece int
 	downloadingPieces []*DownloadingPiece
 	pieceStatus       []byte
@@ -121,12 +121,12 @@ func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer *Peer) []data.Pi
 	return res
 }
 
-func (pp *PiecePicker) AbortBlock(pieceIndex int, blockIndex int, peer Peer) bool {
+func (pp *PiecePicker) AbortBlock(block data.PieceBlock, peer *Peer) bool {
 	pp.mutex.Lock()
 	defer pp.mutex.Unlock()
-	dp := pp.getDownloadingPiece(pieceIndex)
+	dp := pp.getDownloadingPiece(block.PieceIndex)
 	if dp != nil {
-		dp.AbortBlock(blockIndex, peer)
+		dp.AbortBlock(block.PieceIndex, peer)
 		return true
 	}
 
@@ -180,6 +180,20 @@ func (pp *PiecePicker) NumHave() int {
 	}
 
 	return res
+}
+
+func (pp *PiecePicker) SetHave(pieceIndex int) {
+	pp.pieceStatus[pieceIndex] = PIECE_STATE_HAVE
+}
+
+func (pp *PiecePicker) IsFinished() bool {
+	for _, x := range pp.pieceStatus {
+		if x != PIECE_STATE_HAVE {
+			return false
+		}
+	}
+
+	return true
 }
 
 func remove(s []*DownloadingPiece, i int) []*DownloadingPiece {
