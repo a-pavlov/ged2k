@@ -20,11 +20,11 @@ type PiecePicker struct {
 }
 
 func CreatePiecePicker(pieceCount int, blocksInLastPiece int) PiecePicker {
-	return PiecePicker{PieceCount: pieceCount, BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieceStatus: make([]byte, pieceCount+1)}
+	return PiecePicker{PieceCount: pieceCount, BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieceStatus: make([]byte, pieceCount)}
 }
 
 func (pp PiecePicker) BlocksInPiece(pieceIndex int) int {
-	if pp.PieceCount == pieceIndex+1 {
+	if pieceIndex+1 == pp.PieceCount {
 		return pp.BlocksInLastPiece
 	}
 

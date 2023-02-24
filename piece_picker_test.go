@@ -7,7 +7,7 @@ import (
 )
 
 func TestPiecePicker_PickPiecesTrivial(t *testing.T) {
-	pp := CreatePiecePicker(6, 4)
+	pp := CreatePiecePicker(7, 4)
 	peer := Peer{endpoint: proto.EndpointFromString("192.168.11.11:7899"), Speed: PEER_SPEED_SLOW}
 	for i := 0; i < 101; i++ {
 		blocks := pp.PickPieces(3, &peer)
