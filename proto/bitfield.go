@@ -146,3 +146,10 @@ func (bf BitField) Count() int {
 
 	return ret
 }
+
+func CreateBitField(bitsCount int) BitField {
+	nbytes := make([]byte, BitsToBytes(bitsCount))
+	bf := BitField{bytes: nbytes, bits: bitsCount}
+	bf.ClearTrailingBits()
+	return bf
+}

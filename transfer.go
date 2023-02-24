@@ -102,6 +102,7 @@ func (t *Transfer) Start(s *Session) {
 				file.Write(pb.data)
 				file.Sync()
 				// need to save resume data
+
 			} else {
 				// raise the file error here and stop transfer
 			}
@@ -125,6 +126,7 @@ func (t *Transfer) Start(s *Session) {
 					// disconnect all peers
 					// status finished
 					// need save resume data
+
 				}
 			}
 

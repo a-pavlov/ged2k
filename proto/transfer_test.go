@@ -32,13 +32,25 @@ func Test_AddTransferParameters(t *testing.T) {
 		Hashes:           HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, Terminal}},
 		Filename:         String2ByteContainer("/tmp/test.data"),
 		Filesize:         uint64(PIECE_SIZE * 2),
-		DownloadedBlocks: make([]PieceBlock, 0)}
+		DownloadedBlocks: make(map[int]BitField)}
+
+	bf1 := CreateBitField(50)
+	bf2 := CreateBitField(50)
+	bf1.SetBit(0)
+	bf2.SetBit(49)
 
 	atp_2 := AddTransferParameters{
-		Hashes:           HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, Terminal, ZERO}},
-		Filename:         String2ByteContainer("/tmp/data1/data2/some_long_filename_here.data"),
-		Filesize:         uint64(PIECE_SIZE * 2),
-		DownloadedBlocks: []PieceBlock{{BlockIndex: 1, PieceIndex: 2}, {BlockIndex: 3, PieceIndex: 4}}}
+		Hashes:   HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, Terminal, ZERO}},
+		Filename: String2ByteContainer("/tmp/data1/data2/some_long_filename_here.data"),
+		Filesize: uint64(PIECE_SIZE * 2),
+		DownloadedBlocks: map[int]BitField{
+			1:  bf1,
+			33: bf2},
+	}
+
+	if atp_2.DownloadedBlocks[1].Bits() != 50 {
+		t.Errorf("Bits count initially incorrect")
+	}
 
 	data := make([]byte, 300)
 	sb := StateBuffer{Data: data}
@@ -84,7 +96,23 @@ func Test_AddTransferParameters(t *testing.T) {
 		t.Error("Filenames not match atp 1")
 	}
 
-	if atp_2.DownloadedBlocks[1] != atp_2_r.DownloadedBlocks[1] {
-		t.Error("Downloaded blocks in atp 2 are not equal")
+	if len(atp_1_r.DownloadedBlocks) != 0 {
+		t.Errorf("Downloaded blocks size incorrect %v", len(atp_1_r.DownloadedBlocks))
+	}
+
+	if len(atp_2_r.DownloadedBlocks) != 2 {
+		t.Errorf("Downloaded blocks in atp 2 has wrong size: %v", len(atp_2_r.DownloadedBlocks))
+	}
+
+	if len(atp_2_r.DownloadedBlocks) != 2 {
+		t.Errorf("Wrong downloaded block size: %v", len(atp_2_r.DownloadedBlocks))
+	}
+
+	if atp_2_r.DownloadedBlocks[1].Bits() != 50 {
+		t.Errorf("Bit field 1 wrong size: %v", atp_2_r.DownloadedBlocks[1])
+	}
+
+	if !atp_2_r.DownloadedBlocks[1].GetBit(0) || !atp_2_r.DownloadedBlocks[33].GetBit(49) {
+		t.Error("Wrong bits on getting")
 	}
 }

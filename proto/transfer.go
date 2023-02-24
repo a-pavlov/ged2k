@@ -1,6 +1,8 @@
 package proto
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type PieceBlock struct {
 	PieceIndex int
@@ -34,21 +36,26 @@ type AddTransferParameters struct {
 	Filename         ByteContainer
 	Filesize         uint64
 	Pieces           BitField
-	DownloadedBlocks []PieceBlock
+	DownloadedBlocks map[int]BitField
 }
 
 func (atp *AddTransferParameters) Get(sb *StateBuffer) *StateBuffer {
 	sb.Read(&atp.Hashes).Read(&atp.Filename).Read(&atp.Filesize).Read(&atp.Pieces)
-	downloadedBlocksSize := sb.ReadUint16()
+	atp.DownloadedBlocks = make(map[int]BitField)
+	downloadedBlocksSize := int(sb.ReadUint16())
 	if sb.Error() == nil {
-		if int(downloadedBlocksSize) > MAX_ELEMS {
+		if downloadedBlocksSize > MAX_ELEMS {
 			sb.err = fmt.Errorf("downloaded blocks size too large: %v", downloadedBlocksSize)
 			return sb
 		}
 
-		atp.DownloadedBlocks = make([]PieceBlock, int(downloadedBlocksSize))
-		for i, _ := range atp.DownloadedBlocks {
-			sb.Read(&atp.DownloadedBlocks[i])
+		if downloadedBlocksSize > 0 {
+			for i := 0; i < downloadedBlocksSize; i++ {
+				pieceIndex := int(sb.ReadUint32())
+				bf := BitField{}
+				sb.Read(&bf)
+				atp.DownloadedBlocks[pieceIndex] = bf
+			}
 		}
 	}
 
@@ -58,17 +65,24 @@ func (atp *AddTransferParameters) Get(sb *StateBuffer) *StateBuffer {
 func (atp AddTransferParameters) Put(sb *StateBuffer) *StateBuffer {
 	sb.Write(atp.Hashes).Write(atp.Filename).Write(atp.Filesize).Write(atp.Pieces)
 	sb.Write(uint16(len(atp.DownloadedBlocks)))
-	for _, x := range atp.DownloadedBlocks {
+	for i, x := range atp.DownloadedBlocks {
+		sb.Write(uint32(i))
 		sb.Write(x)
 	}
 	return sb
 }
 
 func (atp AddTransferParameters) Size() int {
-	return DataSize(atp.Hashes) +
+	sz := DataSize(atp.Hashes) +
 		DataSize(atp.Filename) +
 		DataSize(atp.Filesize) +
 		DataSize(atp.Pieces) +
-		DataSize(uint16(0)) +
-		len(atp.DownloadedBlocks)*DataSize(PieceBlock{})
+		DataSize(uint16(0))
+
+	for _, x := range atp.DownloadedBlocks {
+		sz += DataSize(uint32(0))
+		sz += DataSize(x)
+	}
+
+	return sz
 }
