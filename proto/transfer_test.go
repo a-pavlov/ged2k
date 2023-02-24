@@ -32,7 +32,7 @@ func Test_AddTransferParameters(t *testing.T) {
 		Hashes:           HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, Terminal}},
 		Filename:         String2ByteContainer("/tmp/test.data"),
 		Filesize:         uint64(PIECE_SIZE * 2),
-		DownloadedBlocks: make(map[int]BitField)}
+		DownloadedBlocks: make(map[int]*BitField)}
 
 	bf1 := CreateBitField(50)
 	bf2 := CreateBitField(50)
@@ -43,9 +43,9 @@ func Test_AddTransferParameters(t *testing.T) {
 		Hashes:   HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, Terminal, ZERO}},
 		Filename: String2ByteContainer("/tmp/data1/data2/some_long_filename_here.data"),
 		Filesize: uint64(PIECE_SIZE * 2),
-		DownloadedBlocks: map[int]BitField{
-			1:  bf1,
-			33: bf2},
+		DownloadedBlocks: map[int]*BitField{
+			1:  &bf1,
+			33: &bf2},
 	}
 
 	if atp_2.DownloadedBlocks[1].Bits() != 50 {

@@ -196,8 +196,25 @@ func (pp *PiecePicker) IsFinished() bool {
 	return true
 }
 
-func (pp *PiecePicker) UpdateResumeData(atp *proto.AddTransferParameters) {
+func (pp *PiecePicker) ApplyResumeData(atp *proto.AddTransferParameters) {
+	if atp.Pieces.Bits() != 0 && atp.Pieces.Bits() == len(pp.pieceStatus) {
+		for i := 0; i < len(pp.pieceStatus); i++ {
+			if atp.Pieces.GetBit(i) {
+				pp.pieceStatus[i] = PIECE_STATE_HAVE
+			}
+		}
+	}
 
+	for pieceIndex, x := range atp.DownloadedBlocks {
+		dp := CreateDownloadingPiece(pieceIndex, pp.BlocksInPiece(pieceIndex))
+		for blockIndex := 0; blockIndex < pp.BlocksInPiece(pieceIndex); blockIndex++ {
+			if x.GetBit(blockIndex) {
+				dp.BlockFinished(blockIndex)
+			}
+		}
+		pp.downloadingPieces = append(pp.downloadingPieces, &dp)
+		pp.pieceStatus[pieceIndex] = PIECE_STATE_DOWNLOADING
+	}
 }
 
 func remove(s []*DownloadingPiece, i int) []*DownloadingPiece {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"strings"
 	"sync"
@@ -29,7 +30,8 @@ type Session struct {
 	unregisterPeerConnection chan *PeerConnection
 
 	//transfer
-	transferChan chan *Transfer
+	transferChan       chan *Transfer
+	transferResumeData chan proto.AddTransferParameters
 
 	ClientId uint32
 	stat     Statistics
@@ -44,7 +46,10 @@ func CreateSession(config Config) *Session {
 		registerServerConnection:   make(chan *ServerConnection),
 		unregisterServerConnection: make(chan *ServerConnection),
 		registerPeerConnection:     make(chan *PeerConnection),
-		unregisterPeerConnection:   make(chan *PeerConnection)}
+		unregisterPeerConnection:   make(chan *PeerConnection),
+		transferChan:               make(chan *Transfer),
+		transferResumeData:         make(chan proto.AddTransferParameters),
+	}
 }
 
 func (s *Session) Tick() {
@@ -157,6 +162,24 @@ func (s *Session) Tick() {
 					pc := PeerConnection{address: elems[1]}
 					s.peerConnections = append(s.peerConnections, &pc)
 					go pc.Start(s)
+				case "load":
+					for i := 1; i < len(elems); i++ {
+						rd, err := ioutil.ReadFile(elems[1])
+						if err != nil {
+							fmt.Println("Error read resume data file", err)
+						} else {
+							sb := proto.StateBuffer{Data: rd}
+							var atp proto.AddTransferParameters
+							sb.Read(&atp)
+							if sb.Error() == nil {
+								// start transfer here
+								t := CreateTransfer(atp)
+								go t.Start(s)
+							} else {
+								fmt.Errorf("Can not read resume data file %v\n", sb.Error())
+							}
+						}
+					}
 				default:
 					fmt.Printf("Unknown command %s\n", cmd)
 				}
@@ -289,6 +312,9 @@ func (s *Session) Tick() {
 				x.Close()
 			}
 			transfer.connections = transfer.connections[:0]
+			//case atp := <-s.transferResumeData:
+			// save resume data
+
 		}
 	}
 

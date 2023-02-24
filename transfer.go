@@ -9,33 +9,37 @@ import (
 )
 
 type Transfer struct {
-	pause          bool
-	stopped        bool
-	Hash           proto.EMuleHash
-	connections    []*PeerConnection
-	policy         Policy
-	piecePicker    *PiecePicker
-	waitGroup      sync.WaitGroup
-	cmdChan        chan string
-	dataChan       chan *PendingBlock
-	sourcesChan    chan proto.FoundFileSources
-	peerConnChan   chan *PeerConnection
-	hashSetChan    chan *proto.HashSet
-	stat           Statistics
-	Size           uint64
-	filename       string
-	incomingPieces map[int]*ReceivingPiece
+	pause                 bool
+	stopped               bool
+	Hash                  proto.EMuleHash
+	connections           []*PeerConnection
+	policy                Policy
+	piecePicker           *PiecePicker
+	waitGroup             sync.WaitGroup
+	cmdChan               chan string
+	dataChan              chan *PendingBlock
+	sourcesChan           chan proto.FoundFileSources
+	peerConnChan          chan *PeerConnection
+	hashSetChan           chan *proto.HashSet
+	stat                  Statistics
+	Size                  uint64
+	filename              string
+	incomingPieces        map[int]*ReceivingPiece
+	addTransferParameters proto.AddTransferParameters
+	lastError             error
 }
 
-func CreateTransfer(hash proto.EMuleHash, size uint64, filename string) *Transfer {
-	return &Transfer{Hash: hash,
-		cmdChan:        make(chan string),
-		dataChan:       make(chan *PendingBlock, 10),
-		sourcesChan:    make(chan proto.FoundFileSources),
-		peerConnChan:   make(chan *PeerConnection),
-		hashSetChan:    make(chan *proto.HashSet),
-		filename:       filename,
-		incomingPieces: make(map[int]*ReceivingPiece)}
+func CreateTransfer(atp proto.AddTransferParameters) *Transfer {
+	return &Transfer{Hash: atp.Hashes.Hash,
+		cmdChan:               make(chan string),
+		dataChan:              make(chan *PendingBlock, 10),
+		sourcesChan:           make(chan proto.FoundFileSources),
+		peerConnChan:          make(chan *PeerConnection),
+		hashSetChan:           make(chan *proto.HashSet),
+		filename:              "some file name",
+		incomingPieces:        make(map[int]*ReceivingPiece),
+		addTransferParameters: atp,
+	}
 }
 
 func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) []*PeerConnection {
@@ -61,20 +65,18 @@ func (t *Transfer) AttachPeer(connection *PeerConnection) {
 
 func (t *Transfer) Start(s *Session) {
 	t.waitGroup.Add(1)
+
 	var hashSet *proto.HashSet
 	file, err := os.OpenFile(t.filename, os.O_WRONLY, 0666)
-	fileRD, errRD := os.OpenFile(t.Hash.ToString()+".dat", os.O_WRONLY, 0666)
 
 	if err != nil {
 		// exit by error
-	}
-
-	if errRD != nil {
-		// exit by resume data error
+		t.lastError = err
+		s.transferChan <- t
+		return
 	}
 
 	defer file.Close()
-	defer fileRD.Close()
 	defer t.waitGroup.Done()
 	execute := true
 	for execute {
@@ -101,8 +103,15 @@ func (t *Transfer) Start(s *Session) {
 			if e == nil {
 				file.Write(pb.data)
 				file.Sync()
-				// need to save resume data
+				// need to save resume data:
+				_, ok := t.addTransferParameters.DownloadedBlocks[pb.block.PieceIndex]
+				if !ok {
+					bf := proto.CreateBitField(proto.BLOCKS_PER_PIECE)
+					t.addTransferParameters.DownloadedBlocks[pb.block.PieceIndex] = &bf
+				}
 
+				t.addTransferParameters.DownloadedBlocks[pb.block.PieceIndex].SetBit(pb.block.BlockIndex)
+				s.transferResumeData <- t.addTransferParameters
 			} else {
 				// raise the file error here and stop transfer
 			}
@@ -116,8 +125,14 @@ func (t *Transfer) Start(s *Session) {
 
 				if rp.Hash().Equals(hashSet.PieceHashes[pb.block.PieceIndex]) {
 					// match
-					// need to save resume data
+					// need to save resume data:
+					t.addTransferParameters.Pieces.SetBit(pb.block.PieceIndex)
+				} else {
+					// hash not match
 				}
+
+				delete(t.addTransferParameters.DownloadedBlocks, pb.block.PieceIndex)
+				s.transferResumeData <- t.addTransferParameters
 
 				wasFinished := t.piecePicker.IsFinished()
 				t.piecePicker.SetHave(pb.block.PieceIndex)
@@ -126,7 +141,8 @@ func (t *Transfer) Start(s *Session) {
 					// disconnect all peers
 					// status finished
 					// need save resume data
-
+					// nothing to do - all pieces marked as downloaded
+					s.transferChan <- t
 				}
 			}
 
