@@ -12,9 +12,12 @@ type ReceivingPiece struct {
 	hashBlockIndex int
 }
 
-func (rp *ReceivingPiece) InsertBlock(pb *PendingBlock) {
+func (rp *ReceivingPiece) InsertBlock(pb *PendingBlock) bool {
 	skipBlocks := 0
 	for _, x := range rp.blocks {
+		if x.block.BlockIndex == pb.block.BlockIndex {
+			return false
+		}
 		if x.block.BlockIndex < pb.block.BlockIndex {
 			skipBlocks++
 		} else {
@@ -47,6 +50,8 @@ func (rp *ReceivingPiece) InsertBlock(pb *PendingBlock) {
 		rp.hash.Write(x.data)
 		rp.hashBlockIndex++
 	}
+
+	return true
 }
 
 func (rp *ReceivingPiece) Hash() proto.EMuleHash {

@@ -9,35 +9,32 @@ import (
 )
 
 type Transfer struct {
-	pause              bool
-	stopped            bool
-	hashSet            []proto.EMuleHash
-	needSaveResumeData bool
-	Hash               proto.EMuleHash
-	connections        []*PeerConnection
-	policy             Policy
-	piecePicker        *PiecePicker
-	waitGroup          sync.WaitGroup
-	cmdChan            chan string
-	dataChan           chan *PendingBlock
-	sourcesChan        chan proto.FoundFileSources
-	peerConnChan       chan *PeerConnection
-	hashSetChan        chan *proto.HashSet
-	stat               Statistics
-	Size               uint64
-	filename           string
-	file               *os.File
-	incomingPieces     map[int]*ReceivingPiece
+	pause          bool
+	stopped        bool
+	Hash           proto.EMuleHash
+	connections    []*PeerConnection
+	policy         Policy
+	piecePicker    *PiecePicker
+	waitGroup      sync.WaitGroup
+	cmdChan        chan string
+	dataChan       chan *PendingBlock
+	sourcesChan    chan proto.FoundFileSources
+	peerConnChan   chan *PeerConnection
+	hashSetChan    chan *proto.HashSet
+	stat           Statistics
+	Size           uint64
+	filename       string
+	incomingPieces map[int]*ReceivingPiece
 }
 
-func CreateTransfer(hash proto.EMuleHash, size uint64, file *os.File) *Transfer {
+func CreateTransfer(hash proto.EMuleHash, size uint64, filename string) *Transfer {
 	return &Transfer{Hash: hash,
 		cmdChan:        make(chan string),
 		dataChan:       make(chan *PendingBlock, 10),
 		sourcesChan:    make(chan proto.FoundFileSources),
 		peerConnChan:   make(chan *PeerConnection),
 		hashSetChan:    make(chan *proto.HashSet),
-		file:           file,
+		filename:       filename,
 		incomingPieces: make(map[int]*ReceivingPiece)}
 }
 
@@ -56,10 +53,6 @@ func (t *Transfer) IsPaused() bool {
 	return t.pause
 }
 
-func (t *Transfer) IsNeedSaveResumeData() bool {
-	return t.needSaveResumeData
-}
-
 func (t *Transfer) AttachPeer(connection *PeerConnection) {
 	t.policy.newConnection(connection)
 	t.connections = append(t.connections, connection)
@@ -68,7 +61,20 @@ func (t *Transfer) AttachPeer(connection *PeerConnection) {
 
 func (t *Transfer) Start(s *Session) {
 	t.waitGroup.Add(1)
-	var hs *proto.HashSet
+	var hashSet *proto.HashSet
+	file, err := os.OpenFile(t.filename, os.O_WRONLY, 0666)
+	fileRD, errRD := os.OpenFile(t.Hash.ToString()+".dat", os.O_WRONLY, 0666)
+
+	if err != nil {
+		// exit by error
+	}
+
+	if errRD != nil {
+		// exit by resume data error
+	}
+
+	defer file.Close()
+	defer fileRD.Close()
 	defer t.waitGroup.Done()
 	execute := true
 	for execute {
@@ -77,39 +83,48 @@ func (t *Transfer) Start(s *Session) {
 			if !ok {
 				execute = false
 			}
-		case hs = <-t.hashSetChan:
-
+		case hashSet = <-t.hashSetChan:
 		case pb := <-t.dataChan:
 			rp, ok := t.incomingPieces[pb.block.PieceIndex]
 			if !ok {
-				rp = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
+				// incoming block was already received and the piece has been removed from incoming order
+				break
 			}
 
-			rp.InsertBlock(pb)
+			if !rp.InsertBlock(pb) {
+				// incoming block has been already inserted to the piece
+				break
+			}
 
+			// write block to the file in advance
+			_, e := file.Seek(int64(rp.blocks[0].block.Start()), 0)
+			if e == nil {
+				file.Write(pb.data)
+				file.Sync()
+				// need to save resume data
+			} else {
+				// raise the file error here and stop transfer
+			}
+
+			// piece completely downloaded
 			if len(rp.blocks) == t.piecePicker.BlocksInPiece(pb.block.PieceIndex) {
 				// check hash here
-				if hs != nil {
-					if rp.Hash().Equals(hs.PieceHashes[pb.block.PieceIndex]) {
-						// hash is not matching
-					}
+				if hashSet == nil {
+					panic("hash set is nil!!")
 				}
-				// start file writing
-				_, e := t.file.Seek(int64(rp.blocks[0].block.Start()), 0)
-				if e != nil {
-					// error on file writing
-				} else {
-					for _, x := range rp.blocks {
-						t.file.Write(x.data)
-					}
 
-					wasFinished := t.piecePicker.IsFinished()
-					t.piecePicker.SetHave(pb.block.PieceIndex)
-					delete(t.incomingPieces, pb.block.PieceIndex)
-					if !wasFinished && t.piecePicker.IsFinished() {
-						// disconnect all peers
-						// status finished
-					}
+				if rp.Hash().Equals(hashSet.PieceHashes[pb.block.PieceIndex]) {
+					// match
+					// need to save resume data
+				}
+
+				wasFinished := t.piecePicker.IsFinished()
+				t.piecePicker.SetHave(pb.block.PieceIndex)
+				delete(t.incomingPieces, pb.block.PieceIndex)
+				if !wasFinished && t.piecePicker.IsFinished() {
+					// disconnect all peers
+					// status finished
+					// need save resume data
 				}
 			}
 
@@ -117,6 +132,10 @@ func (t *Transfer) Start(s *Session) {
 			blocks := t.piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
 			req := proto.RequestParts64{Hash: peerConnection.transfer.Hash}
 			for i, x := range blocks {
+				// add piece as incoming to the transfer
+				if t.incomingPieces[x.PieceIndex] == nil {
+					t.incomingPieces[x.PieceIndex] = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
+				}
 				pb := CreatePendingBlock(x, peerConnection.transfer.Size)
 				peerConnection.requestedBlocks = append(peerConnection.requestedBlocks, &pb)
 				req.BeginOffset[i] = pb.region.Begin()

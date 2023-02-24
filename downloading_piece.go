@@ -74,3 +74,7 @@ func (dp *DownloadingPiece) AbortBlock(blockIndex int, peer *Peer) {
 		dp.blocks[blockIndex].lastDownloader = nil
 	}
 }
+
+func (dp *DownloadingPiece) BlockFinished(blockIndex int) {
+
+}
