@@ -128,8 +128,15 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			} else {
 				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 			}
-			// req filename
-			//peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
+		// req filename
+		//peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
+		case ph.Packet == proto.OP_PUBLICIP_REQ && ph.Protocol == proto.OP_EMULEPROT:
+			fmt.Println("Public IP request has been received")
+			ep, err := proto.FromString("192.168.111.11:9999")
+			if err == nil {
+				ip := proto.IP(ep.Ip)
+				peerConnection.SendPacket(proto.OP_EMULEPROT, proto.OP_PUBLICIP_ANSWER, &ip)
+			}
 		case ph.Packet == proto.OP_REQUESTFILENAME:
 		case ph.Packet == proto.OP_REQFILENAMEANSWER:
 			fa := proto.FileAnswer{}
@@ -138,7 +145,8 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				peerConnection.lastError = sb.Error()
 				break
 			} else {
-				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_FILESTATUS, &peerConnection.transfer.Hash)
+				fmt.Println("Received filename answer", fa.Name.ToString())
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_SETREQFILEID, &peerConnection.transfer.Hash)
 			}
 		case ph.Packet == proto.OP_CANCELTRANSFER:
 			// cancel transfer received
@@ -150,13 +158,18 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			sb.Read(&fs)
 			if sb.Error() != nil {
 				peerConnection.lastError = sb.Error()
+				fmt.Println("Error on file status answer", sb.Error())
 				break
+			} else {
+				fmt.Println("File status received, bits:", fs.BF.Bits(), "count", fs.BF.Count())
+
 			}
 
 			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.Hash)
 			// got file status answer
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
+			// inform transfer/session here
 			peerConnection.lastError = fmt.Errorf("no file answer received")
 			break
 		case ph.Packet == proto.OP_HASHSETREQUEST:
@@ -167,14 +180,18 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			sb.Read(&hs)
 			if sb.Error() != nil {
 				peerConnection.lastError = sb.Error()
+				fmt.Println("Can not read hash set answer")
 				break
+			} else {
+				fmt.Println("Received hash set answer")
 			}
 
-			peerConnection.transfer.hashSetChan <- &hs
+			//peerConnection.transfer.hashSetChan <- &hs
 			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &hs.Hash)
 		case ph.Packet == proto.OP_STARTUPLOADREQ:
 			// receive start upload request
 		case ph.Packet == proto.OP_ACCEPTUPLOADREQ:
+			fmt.Println("received accept uploadow req")
 
 			// got accept upload
 		case ph.Packet == proto.OP_QUEUERANKING:

@@ -376,6 +376,21 @@ func (i Endpoint) Size() int {
 	return DataSize(i.Ip) + DataSize(i.Port)
 }
 
+type IP uint32
+
+func (ip *IP) Get(sb *StateBuffer) *StateBuffer {
+	*ip = IP(sb.ReadUint32())
+	return sb
+}
+
+func (ip IP) Put(sb *StateBuffer) *StateBuffer {
+	return sb.Write(uint32(ip))
+}
+
+func (ip IP) Size() int {
+	return DataSize(uint32(ip))
+}
+
 func (i Endpoint) AsString() string {
 	return fmt.Sprintf("%d.%d.%d.%d:%d", i.Ip&0xff, (i.Ip>>8)&0xff, (i.Ip>>16)&0xff, (i.Ip>>24)&0xff, i.Port)
 }
@@ -526,6 +541,10 @@ func (bc ByteContainer) Size() int {
 
 func String2ByteContainer(s string) ByteContainer {
 	return []byte(s)
+}
+
+func (bc ByteContainer) ToString() string {
+	return string(bc)
 }
 
 type PacketHeader struct {
