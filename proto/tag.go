@@ -628,7 +628,7 @@ func CreateTag(data interface{}, id byte, name string) Tag {
 		return Tag{Type: TAGTYPE_FLOAT32, Id: id, Name: name, value: []byte{byte(v & 0xFF), byte((v >> 8) & 0xFF), byte((v >> 16) & 0xFF), byte((v >> 24) & 0xFF)}}
 	case string:
 		v := []byte(data)
-		if len(v) <= 16 {
+		if len(v) > 0 && len(v) <= 16 {
 			return Tag{Type: TAGTYPE_STR1 + byte(len(v)) - 1, Id: id, Name: name, value: v}
 		}
 

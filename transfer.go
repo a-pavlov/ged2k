@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/a-pavlov/ged2k/data"
 	"github.com/a-pavlov/ged2k/proto"
 	"golang.org/x/crypto/md4"
 	"os"
@@ -29,14 +30,15 @@ type Transfer struct {
 	lastError             error
 }
 
-func CreateTransfer(atp proto.AddTransferParameters) *Transfer {
+func CreateTransfer(atp proto.AddTransferParameters, filename string) *Transfer {
 	return &Transfer{Hash: atp.Hashes.Hash,
 		cmdChan:               make(chan string),
 		dataChan:              make(chan *PendingBlock, 10),
 		sourcesChan:           make(chan proto.FoundFileSources),
 		peerConnChan:          make(chan *PeerConnection),
 		hashSetChan:           make(chan *proto.HashSet),
-		filename:              "some file name",
+		filename:              filename,
+		piecePicker:           CreatePiecePicker(data.NumPiecesAndBlocks(atp.Filesize)),
 		incomingPieces:        make(map[int]*ReceivingPiece),
 		addTransferParameters: atp,
 	}

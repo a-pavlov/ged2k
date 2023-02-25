@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,7 @@ func CreateSession(config Config) *Session {
 		unregisterServerConnection: make(chan *ServerConnection),
 		registerPeerConnection:     make(chan *PeerConnection),
 		unregisterPeerConnection:   make(chan *PeerConnection),
+		transfers:                  make(map[proto.EMuleHash]*Transfer),
 		transferChan:               make(chan *Transfer),
 		transferResumeData:         make(chan proto.AddTransferParameters),
 	}
@@ -110,6 +112,7 @@ func (s *Session) Tick() {
 				fmt.Println("Session exit requested")
 				execute = false
 			} else {
+				fmt.Println("Session received cmd:", cmd)
 				elems := strings.Split(cmd, " ")
 
 				switch elems[0] {
@@ -173,13 +176,25 @@ func (s *Session) Tick() {
 							sb.Read(&atp)
 							if sb.Error() == nil {
 								// start transfer here
-								t := CreateTransfer(atp)
+								t := CreateTransfer(atp, "")
 								go t.Start(s)
 							} else {
 								fmt.Errorf("Can not read resume data file %v\n", sb.Error())
 							}
 						}
 					}
+				case "tran":
+					fmt.Println("tran command accepted")
+					filename := elems[1]
+					hash := proto.String2Hash(elems[2])
+					size, err := strconv.ParseUint(elems[3], 10, 64)
+					if err == nil {
+						fmt.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
+						s.transfers[hash] = CreateTransfer(proto.CreateAddTransferParameters(hash, size, filename), filename)
+					} else {
+						fmt.Println("Error on transfer adding", err)
+					}
+
 				default:
 					fmt.Printf("Unknown command %s\n", cmd)
 				}
@@ -208,6 +223,10 @@ func (s *Session) Tick() {
 			}
 		case <-tick:
 			fmt.Println("Tick")
+			for i, x := range s.transfers {
+				x.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S', Connectable: true})
+				fmt.Println("Add peer to", i)
+			}
 			currentTime := time.Now()
 			if s.serverConnection != nil {
 				if !serverLastReq.IsZero() && currentTime.Sub(serverLastReq).Seconds() > 5 {
@@ -384,7 +403,7 @@ func (s *Session) CreateHelloAnswer() proto.HelloAnswer {
 	hello.Properties = append(hello.Properties, proto.CreateTag(s.configuration.ClientName, proto.CT_NAME, ""))
 	hello.Properties = append(hello.Properties, proto.CreateTag(s.configuration.ModName, proto.CT_MOD_VERSION, ""))
 	hello.Properties = append(hello.Properties, proto.CreateTag(s.configuration.AppVersion, proto.CT_VERSION, ""))
-	hello.Properties = append(hello.Properties, proto.CreateTag(0, proto.CT_EMULE_UDPPORTS, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(uint32(0), proto.CT_EMULE_UDPPORTS, ""))
 	// do not send CT_EM_VERSION since it will activate secure identification we are not support
 
 	mo := proto.MiscOptions{}
@@ -401,7 +420,7 @@ func (s *Session) CreateHelloAnswer() proto.HelloAnswer {
 
 	hello.Properties = append(hello.Properties, proto.CreateTag(version, proto.CT_EMULE_VERSION, ""))
 	hello.Properties = append(hello.Properties, proto.CreateTag(mo.AsUint32(), proto.CT_EMULE_MISCOPTIONS1, ""))
-	hello.Properties = append(hello.Properties, proto.CreateTag(mo2, proto.CT_EMULE_MISCOPTIONS2, ""))
+	hello.Properties = append(hello.Properties, proto.CreateTag(uint32(mo2), proto.CT_EMULE_MISCOPTIONS2, ""))
 	return hello
 }
 
@@ -419,6 +438,10 @@ func (s *Session) Disconnect() {
 
 func (s *Session) DiscardPacket() {
 	s.serverPackets <- nil
+}
+
+func (s *Session) Cmd(cmd string) {
+	s.comm <- cmd
 }
 
 func (s *Session) Send(serverConnection *ServerConnection, data proto.Serializable) {

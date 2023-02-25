@@ -73,15 +73,21 @@ type PeerConnection struct {
 }
 
 func (peerConnection *PeerConnection) Start(s *Session) {
+	fmt.Println("Peer connection start", peerConnection.peer.endpoint.AsString())
 	if peerConnection.connection == nil {
 		conn, err := net.Dial("tcp", peerConnection.peer.endpoint.AsString())
 		if err != nil {
+			fmt.Println("Can not connect", err)
 			s.unregisterPeerConnection <- peerConnection
 			return
 		}
-		ha := s.CreateHelloAnswer()
+		hello := proto.Hello{Answer: s.CreateHelloAnswer(), HashLength: byte(proto.HASH_LEN)}
 		peerConnection.connection = conn
-		peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HELLO, &ha)
+		_, err = peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HELLO, &hello)
+		if err != nil {
+			fmt.Printf("Can not send hello: %v\n", err)
+			s.unregisterPeerConnection <- peerConnection
+		}
 	}
 
 	pc := proto.PacketCombiner{}
@@ -90,7 +96,9 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 		ph, packetBytes, err := pc.Read(peerConnection.connection)
 
 		if err != nil {
+			fmt.Printf("Peer connection read error %v\n", err)
 			peerConnection.lastError = err
+			s.unregisterPeerConnection <- peerConnection
 			break
 		}
 
@@ -98,7 +106,8 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 
 		switch {
 		case ph.Packet == proto.OP_HELLO:
-			hello := proto.HelloAnswer{}
+			fmt.Println("Peer connection: HELLO")
+			hello := proto.Hello{}
 			sb.Read(&hello)
 			if sb.Error() != nil {
 				peerConnection.lastError = sb.Error()
@@ -110,6 +119,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			// send hello answer
 			// send file request
 		case ph.Packet == proto.OP_HELLOANSWER:
+			fmt.Println("Peer connection: HELLO_ANSWER")
 			helloAnswer := proto.HelloAnswer{}
 			sb.Read(&helloAnswer)
 			if sb.Error() != nil {
@@ -119,8 +129,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 			}
 			// req filename
-			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
-
+			//peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 		case ph.Packet == proto.OP_REQUESTFILENAME:
 		case ph.Packet == proto.OP_REQFILENAMEANSWER:
 			fa := proto.FileAnswer{}
@@ -277,6 +286,7 @@ func (connection *PeerConnection) SendPacket(protocol byte, packet byte, data pr
 	}
 
 	sz := proto.DataSize(data)
+	fmt.Printf("Packet size calculated: %d\n", sz)
 	bytes := make([]byte, sz+proto.HEADER_SIZE)
 	stateBuffer := proto.StateBuffer{Data: bytes[proto.HEADER_SIZE:]}
 	data.Put(&stateBuffer)
@@ -284,11 +294,14 @@ func (connection *PeerConnection) SendPacket(protocol byte, packet byte, data pr
 	if stateBuffer.Error() != nil {
 		fmt.Printf("Send error %v for %d bytes\n", stateBuffer.Error(), sz)
 		return 0, stateBuffer.Error()
+	} else {
+		fmt.Println("Wrote", stateBuffer.Offset(), "bytes")
 	}
 
 	bytesCount := uint32(stateBuffer.Offset() + 1)
 	ph := proto.PacketHeader{Protocol: protocol, Packet: packet, Bytes: bytesCount}
 	ph.Write(bytes)
+	fmt.Printf("Bytes: %x\n", bytes)
 	return connection.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
 }
 

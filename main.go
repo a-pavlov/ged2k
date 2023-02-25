@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/a-pavlov/ged2k/proto"
 	"os"
 	"strings"
 )
@@ -10,7 +11,7 @@ import (
 func main() {
 	fmt.Println("Hello ged2k")
 	reader := bufio.NewReader(os.Stdin)
-	cfg := Config{ListenPort: 30000, Name: "TestGed2k"}
+	cfg := Config{UserAgent: proto.EMULE, ListenPort: 4888, Name: "TestGed2k", MaxConnections: 100, ModName: "jed2k", ClientName: "jed2k", AppVersion: 0x3c}
 	s := CreateSession(cfg)
 	s.Start()
 
@@ -34,9 +35,12 @@ L:
 		case "rep":
 			//fmt.Println("Server connection status", sc.Status())
 		default:
-			fmt.Print("RESP", message)
+			s.Cmd(strings.Trim(message, "\n"))
 		}
 	}
 
 	s.Stop()
 }
+
+// tran /tmp/test.txt 460359517F89AE010793896EDE7D30F8 4
+// OP_PUBLICIP_REQ

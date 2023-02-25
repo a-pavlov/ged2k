@@ -19,8 +19,9 @@ type PiecePicker struct {
 	pieceStatus       []byte
 }
 
-func CreatePiecePicker(pieceCount int, blocksInLastPiece int) PiecePicker {
-	return PiecePicker{PieceCount: pieceCount, BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieceStatus: make([]byte, pieceCount)}
+func CreatePiecePicker(pieceCount int, blocksInLastPiece int) *PiecePicker {
+	fmt.Printf("Create piece picker with %d pieces and %d blocks in the last piece", pieceCount, blocksInLastPiece)
+	return &PiecePicker{PieceCount: pieceCount, BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieceStatus: make([]byte, pieceCount)}
 }
 
 func (pp PiecePicker) BlocksInPiece(pieceIndex int) int {

@@ -28,6 +28,25 @@ func (ha HelloAnswer) Size() int {
 	return DataSize(ha.Hash) + DataSize(ha.Point) + DataSize(ha.Properties) + DataSize(ha.ServerPoint)
 }
 
+type Hello struct {
+	HashLength byte
+	Answer     HelloAnswer
+}
+
+func (hello *Hello) Get(sb *StateBuffer) *StateBuffer {
+	sb.ReadUint8()
+	return sb.Read(hello.Answer)
+}
+
+func (hello Hello) Put(sb *StateBuffer) *StateBuffer {
+	hlen := byte(0x10)
+	return sb.Write(hlen).Write(hello.Answer)
+}
+
+func (hello Hello) Size() int {
+	return DataSize(hello.HashLength) + DataSize(hello.Answer)
+}
+
 type ExtHello struct {
 	Version         byte
 	ProtocolVersion byte
