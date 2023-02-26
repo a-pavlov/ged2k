@@ -88,10 +88,11 @@ func (atp AddTransferParameters) Size() int {
 }
 
 func CreateAddTransferParameters(hash ED2KHash, size uint64, filename string) AddTransferParameters {
+	piecesCount, _ := NumPiecesAndBlocks(size)
 	return AddTransferParameters{Hashes: HashSet{Hash: hash, PieceHashes: make([]ED2KHash, 0)},
 		Filesize:         size,
 		Filename:         String2ByteContainer(filename),
-		Pieces:           CreateBitField(0),
+		Pieces:           CreateBitField(piecesCount),
 		DownloadedBlocks: make(map[int]*BitField),
 	}
 }

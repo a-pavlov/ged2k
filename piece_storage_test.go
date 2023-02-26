@@ -71,3 +71,24 @@ func Test_ReceivedPiece(t *testing.T) {
 		t.Errorf("Wrong blocks order")
 	}
 }
+
+func Test_ReceivingPieceSingle(t *testing.T) {
+	rp := ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
+	pb0 := PendingBlock{block: proto.PieceBlock{0, 0}, data: make([]byte, 10)}
+	for i, _ := range pb0.data {
+		pb0.data[i] = 'A'
+	}
+
+	if !rp.InsertBlock(&pb0) {
+		t.Errorf("Can not insert first block")
+	}
+
+	expected := proto.ED2KHash{}
+	md4 := md4.New()
+	md4.Write(pb0.data)
+	md4.Sum(expected[:0])
+
+	if expected != rp.Hash() {
+		t.Errorf("Result hash %x does not match expected %x", rp.Hash(), expected)
+	}
+}

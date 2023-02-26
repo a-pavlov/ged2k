@@ -56,6 +56,6 @@ func (rp *ReceivingPiece) InsertBlock(pb *PendingBlock) bool {
 
 func (rp *ReceivingPiece) Hash() proto.ED2KHash {
 	h := proto.ED2KHash{}
-	rp.hash.Sum(h[:])
+	rp.hash.Sum(h[:0])
 	return h
 }

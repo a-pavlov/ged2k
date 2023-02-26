@@ -85,6 +85,11 @@ func Test_Size2PieceBlockIndex(t *testing.T) {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p1, b1)
 	}
 
+	p1_, b1_ := proto.NumPiecesAndBlocks(4)
+	if p1_ != 1 || b1_ != 1 {
+		t.Errorf("Pieces or blocks count is not correct [%d %d]", p1_, b1_)
+	}
+
 	p2, b2 := proto.NumPiecesAndBlocks(proto.BLOCK_SIZE_UINT64)
 	if p2 != 1 || b2 != 1 {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p2, b2)

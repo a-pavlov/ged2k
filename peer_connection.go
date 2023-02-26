@@ -169,6 +169,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			} else {
 				hs := proto.HashSet{Hash: peerConnection.transfer.Hash, PieceHashes: []proto.ED2KHash{peerConnection.transfer.Hash}}
 				peerConnection.transfer.hashSetChan <- &hs
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &hs.Hash)
 			}
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
@@ -216,6 +217,8 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			}
 
+			fmt.Println("Peer connection sending part", sp.Begin, sp.End)
+
 			block := proto.FromOffset(sp.Begin)
 
 			for i, x := range peerConnection.requestedBlocks {
@@ -223,6 +226,8 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 					if x.data != nil {
 						_, err := x.Receive(peerConnection.connection, sp.Begin, sp.End)
 						if err != nil {
+							fmt.Printf("Peer connection error on receive data: %v\n", err)
+							peerConnection.lastError = err
 							// raise error and close peerConnection
 						}
 

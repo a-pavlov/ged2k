@@ -190,7 +190,9 @@ func (s *Session) Tick() {
 					size, err := strconv.ParseUint(elems[3], 10, 64)
 					if err == nil {
 						fmt.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
-						s.transfers[hash] = CreateTransfer(proto.CreateAddTransferParameters(hash, size, filename), filename)
+						tran := CreateTransfer(proto.CreateAddTransferParameters(hash, size, filename), filename)
+						s.transfers[hash] = tran
+						go tran.Start(s)
 					} else {
 						fmt.Println("Error on transfer adding", err)
 					}
@@ -331,9 +333,8 @@ func (s *Session) Tick() {
 				x.Close()
 			}
 			transfer.connections = transfer.connections[:0]
-			//case atp := <-s.transferResumeData:
-			// save resume data
-
+		case atp := <-s.transferResumeData:
+			fmt.Println("Save resume data - ignore for now", atp.Filename.ToString())
 		}
 	}
 

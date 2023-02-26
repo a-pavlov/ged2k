@@ -30,4 +30,10 @@ func Test_PendingBlock(t *testing.T) {
 	if pendingBlock2.region.Segments[0].End-pendingBlock2.region.Segments[0].Begin != proto.BLOCK_SIZE_UINT64 {
 		t.Errorf("Region 2 length is not correct: %v", pendingBlock2.region.Segments[0].End-pendingBlock2.region.Segments[0].Begin)
 	}
+
+	pieceBlock2 := proto.PieceBlock{PieceIndex: 0, BlockIndex: 0}
+	pb2 := CreatePendingBlock(pieceBlock2, 4)
+	if pb2.block.PieceIndex != 0 || pb2.block.BlockIndex != 0 || len(pb2.data) != 4 || pb2.region.Segments[0].End != 4 {
+		t.Errorf("Pending block create error: %v", len(pb2.data))
+	}
 }
