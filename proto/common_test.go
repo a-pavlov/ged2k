@@ -124,6 +124,8 @@ func Test_pieceHash(t *testing.T) {
 	}
 
 	arr := make([]byte, 0)
+	var h EMuleHash
+	hash.Sum(h[:0])
 	arr = hash.Sum(arr)
 
 	if len(arr) != 16 {
@@ -133,6 +135,10 @@ func Test_pieceHash(t *testing.T) {
 	expected := []byte{0x79, 0x32, 0x4E, 0x42, 0x16, 0x02, 0x25, 0x1A, 0x39, 0x93, 0x6D, 0x7E, 0x8B, 0xC6, 0x41, 0x25}
 	if !bytes.Equal(expected, arr) {
 		t.Errorf("Incorrect resulted hash: %v expected %v", arr, expected)
+	}
+
+	if !bytes.Equal(h[:], expected) {
+		t.Errorf("Hash content not equal the expected bytes: %x != %x", h[:], expected)
 	}
 
 }

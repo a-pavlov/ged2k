@@ -36,7 +36,7 @@ func removePendingBlock(s []*PendingBlock, i int) []*PendingBlock {
 }
 
 func (pb *PendingBlock) Receive(reader io.Reader, begin uint64, end uint64) (int, error) {
-	inBlockOffset := data.InBlockOffset(begin)
+	inBlockOffset := proto.InBlockOffset(begin)
 	chunkLen := int(end - begin)
 	n, err := io.ReadFull(reader, pb.data[inBlockOffset:inBlockOffset+chunkLen])
 	if err == nil {
@@ -50,7 +50,7 @@ func (pb *PendingBlock) Receive(reader io.Reader, begin uint64, end uint64) (int
 }
 
 func (pb *PendingBlock) ReceiveToEof(reader io.Reader, begin uint64) (int, error) {
-	inBlockOffset := data.InBlockOffset(begin)
+	inBlockOffset := proto.InBlockOffset(begin)
 	n, err := io.ReadFull(reader, pb.data[inBlockOffset:])
 	if err == nil {
 		pb.region.Sub(data.Range{Begin: begin, End: begin + uint64(n)})
@@ -162,11 +162,14 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			} else {
 				fmt.Println("File status received, bits:", fs.BF.Bits(), "count", fs.BF.Count())
-
 			}
 
-			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.Hash)
-			// got file status answer
+			if peerConnection.transfer.addTransferParameters.Filesize >= proto.PIECE_SIZE_UINT64 {
+				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.Hash)
+			} else {
+				hs := proto.HashSet{Hash: peerConnection.transfer.Hash, PieceHashes: []proto.EMuleHash{peerConnection.transfer.Hash}}
+				peerConnection.transfer.hashSetChan <- &hs
+			}
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
 			// inform transfer/session here
@@ -186,13 +189,13 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				fmt.Println("Received hash set answer")
 			}
 
-			//peerConnection.transfer.hashSetChan <- &hs
+			peerConnection.transfer.hashSetChan <- &hs
 			peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_STARTUPLOADREQ, &hs.Hash)
 		case ph.Packet == proto.OP_STARTUPLOADREQ:
 			// receive start upload request
 		case ph.Packet == proto.OP_ACCEPTUPLOADREQ:
 			fmt.Println("received accept uploadow req")
-
+			peerConnection.transfer.peerConnChan <- peerConnection
 			// got accept upload
 		case ph.Packet == proto.OP_QUEUERANKING:
 			rank := sb.ReadUint16()
@@ -228,7 +231,6 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 							removePendingBlock(peerConnection.requestedBlocks, i)
 						}
 					}
-
 				}
 			}
 

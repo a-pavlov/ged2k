@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/a-pavlov/ged2k/data"
 	"github.com/a-pavlov/ged2k/proto"
 	"golang.org/x/crypto/md4"
 	"os"
@@ -38,7 +37,7 @@ func CreateTransfer(atp proto.AddTransferParameters, filename string) *Transfer 
 		peerConnChan:          make(chan *PeerConnection),
 		hashSetChan:           make(chan *proto.HashSet),
 		filename:              filename,
-		piecePicker:           CreatePiecePicker(data.NumPiecesAndBlocks(atp.Filesize)),
+		piecePicker:           CreatePiecePicker(proto.NumPiecesAndBlocks(atp.Filesize)),
 		incomingPieces:        make(map[int]*ReceivingPiece),
 		addTransferParameters: atp,
 	}

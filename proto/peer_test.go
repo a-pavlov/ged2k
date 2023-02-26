@@ -3,6 +3,7 @@ package proto
 import (
 	"bytes"
 	"fmt"
+	"golang.org/x/crypto/md4"
 	"testing"
 )
 
@@ -74,6 +75,59 @@ func Test_HashSet(t *testing.T) {
 					t.Errorf("Hashes are not equal for pos %d src %v dst %v", i, hs.PieceHashes[i], hs2.PieceHashes[i])
 				}
 			}
+		}
+	}
+}
+
+func Test_HashSetCalculation(t *testing.T) {
+	lengths := []int{
+		100,
+		PIECE_SIZE,
+		PIECE_SIZE + 1,
+		PIECE_SIZE * 4,
+	}
+	hashes := []EMuleHash{
+		String2Hash("1AA8AFE3018B38D9B4D880D0683CCEB5"),
+		String2Hash("E76BADB8F958D7685B4549D874699EE9"),
+		String2Hash("49EC2B5DEF507DEA73E106FEDB9697EE"),
+		String2Hash("9385DCEF4CB89FD5A4334F5034C28893"),
+	}
+
+	for i := 0; i < len(lengths); i++ {
+		data := make([]byte, lengths[i])
+		for j := 0; j < len(data); j++ {
+			data[j] = 'X'
+		}
+
+		pieces, _ := NumPiecesAndBlocks(uint64(lengths[i]))
+		hashset := make([]EMuleHash, 0)
+		remain := lengths[i]
+
+		for k := 0; k < pieces; k++ {
+			hasher := md4.New()
+			inPieceBytes := Min(PIECE_SIZE, remain)
+			startPos := lengths[i] - remain
+			hasher.Write(data[startPos : startPos+inPieceBytes])
+			var localHash EMuleHash
+			hasher.Sum(localHash[:0])
+			hashset = append(hashset, localHash)
+			remain -= inPieceBytes
+		}
+
+		if remain != 0 {
+			t.Errorf("Error on relative position calculation: %v", remain)
+		}
+
+		if len(hashset) != pieces {
+			t.Errorf("Piece count generated incorrect count")
+		}
+
+		if lengths[i] == PIECE_SIZE*pieces {
+			hashset = append(hashset, Terminal)
+		}
+
+		if ResultHash(hashset) != hashes[i] {
+			t.Errorf("Result hash %x is not equal %x", ResultHash(hashset), hashes[i])
 		}
 	}
 }

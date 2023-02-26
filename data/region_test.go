@@ -80,37 +80,37 @@ func Test_FullIntersect(t *testing.T) {
 }
 
 func Test_Size2PieceBlockIndex(t *testing.T) {
-	p1, b1 := NumPiecesAndBlocks(0)
+	p1, b1 := proto.NumPiecesAndBlocks(0)
 	if p1 != 0 || b1 != 0 {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p1, b1)
 	}
 
-	p2, b2 := NumPiecesAndBlocks(proto.BLOCK_SIZE_UINT64)
+	p2, b2 := proto.NumPiecesAndBlocks(proto.BLOCK_SIZE_UINT64)
 	if p2 != 1 || b2 != 1 {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p2, b2)
 	}
 
-	p3, b3 := NumPiecesAndBlocks(proto.BLOCK_SIZE_UINT64 + 1)
+	p3, b3 := proto.NumPiecesAndBlocks(proto.BLOCK_SIZE_UINT64 + 1)
 	if p3 != 1 || b3 != 2 {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p3, b3)
 	}
 
-	p4, b4 := NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64 + proto.BLOCK_SIZE_UINT64)
+	p4, b4 := proto.NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64 + proto.BLOCK_SIZE_UINT64)
 	if p4 != 2 || b4 != 1 {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p4, b4)
 	}
 
-	p5, b5 := NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64)
+	p5, b5 := proto.NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64)
 	if p5 != 1 || b5 != proto.BLOCKS_PER_PIECE {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p5, b5)
 	}
 
-	p6, b6 := NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64*7 + proto.BLOCK_SIZE_UINT64*10 + 101)
+	p6, b6 := proto.NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64*7 + proto.BLOCK_SIZE_UINT64*10 + 101)
 	if p6 != 8 || b6 != 11 {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p6, b6)
 	}
 
-	p7, b7 := NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64 * 3)
+	p7, b7 := proto.NumPiecesAndBlocks(proto.PIECE_SIZE_UINT64 * 3)
 	if p7 != 3 || b7 != 50 {
 		t.Errorf("Pieces or blocks count is not correct [%d %d]", p7, b7)
 	}

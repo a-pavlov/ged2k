@@ -1,6 +1,9 @@
 package proto
 
-import "fmt"
+import (
+	"fmt"
+	"golang.org/x/crypto/md4"
+)
 
 const PARTS_IN_REQUEST int = 3
 
@@ -130,6 +133,25 @@ func (hs HashSet) Put(sb *StateBuffer) *StateBuffer {
 
 func (hs HashSet) Size() int {
 	return DataSize(hs.Hash) + DataSize(uint16(len(hs.PieceHashes))) + len(hs.PieceHashes)*DataSize(hs.Hash)
+}
+
+func ResultHash(hashes []EMuleHash) EMuleHash {
+	if len(hashes) == 0 {
+		return EMuleHash{}
+	}
+
+	if len(hashes) == 1 {
+		return hashes[0]
+	}
+
+	hasher := md4.New()
+	for _, x := range hashes {
+		hasher.Write(x[:])
+	}
+
+	var result EMuleHash
+	hasher.Sum(result[:0])
+	return result
 }
 
 type RequestParts32 struct {
