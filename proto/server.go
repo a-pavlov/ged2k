@@ -30,7 +30,7 @@ const GED2K_VERSION_MINOR = 1
 const GED2K_VERSION_TINY = 0
 
 type FoundFileSources struct {
-	Hash    EMuleHash
+	Hash    ED2KHash
 	Sources []Endpoint
 }
 

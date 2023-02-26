@@ -50,15 +50,15 @@ func Test_hash(t *testing.T) {
 	arr = h.Sum(arr)
 
 	if len(arr) != 16 {
-		t.Error("EMuleHash obtain wrong size")
+		t.Error("ED2KHash obtain wrong size")
 	}
 
-	//t.Errorf("EMuleHash calculated %x", arr)
+	//t.Errorf("ED2KHash calculated %x", arr)
 
-	var term EMuleHash = Terminal
-	var ed2k EMuleHash = LIBED2K
+	var term ED2KHash = Terminal
+	var ed2k ED2KHash = LIBED2K
 
-	var h3 EMuleHash
+	var h3 ED2KHash
 	if h3 == term {
 		t.Errorf("Hashes must not be equal")
 	}
@@ -67,10 +67,10 @@ func Test_hash(t *testing.T) {
 	sw := StateBuffer{Data: buf}
 	term.Put(ed2k.Put(&sw))
 	if sw.err != nil {
-		t.Errorf("EMuleHash serialize error %v", sw.err)
+		t.Errorf("ED2KHash serialize error %v", sw.err)
 	}
 
-	var h4, h5 EMuleHash
+	var h4, h5 ED2KHash
 	sr := StateBuffer{Data: buf}
 	h4.Get(h5.Get(&sr))
 
@@ -88,9 +88,9 @@ func Test_hash(t *testing.T) {
 }
 
 func Test_Hash2(t *testing.T) {
-	var h1 EMuleHash
-	var h2 EMuleHash
-	var h3 EMuleHash
+	var h1 ED2KHash
+	var h2 ED2KHash
+	var h3 ED2KHash
 	h1 = EMULE
 	h2 = EMULE
 	h3 = LIBED2K
@@ -114,7 +114,7 @@ func Test_pieceHash(t *testing.T) {
 	for offset < size {
 		currBlockSize := Min(size-offset, len(data))
 		hash.Write(data[:currBlockSize])
-		fmt.Println("EMuleHash for bytes", currBlockSize)
+		fmt.Println("ED2KHash for bytes", currBlockSize)
 		offset += currBlockSize
 		blocksProcessed++
 	}
@@ -124,12 +124,12 @@ func Test_pieceHash(t *testing.T) {
 	}
 
 	arr := make([]byte, 0)
-	var h EMuleHash
+	var h ED2KHash
 	hash.Sum(h[:0])
 	arr = hash.Sum(arr)
 
 	if len(arr) != 16 {
-		t.Errorf("EMuleHash size is not corrrect: %d", len(arr))
+		t.Errorf("ED2KHash size is not corrrect: %d", len(arr))
 	}
 
 	expected := []byte{0x79, 0x32, 0x4E, 0x42, 0x16, 0x02, 0x25, 0x1A, 0x39, 0x93, 0x6D, 0x7E, 0x8B, 0xC6, 0x41, 0x25}
@@ -150,7 +150,7 @@ func Test_HashStrings(t *testing.T) {
 	}
 
 	if h.ToString() != "31D6CFE0D16AE931B73C59D7E0C089C0" {
-		t.Errorf("EMuleHash format to string is not correct %v", h.ToString())
+		t.Errorf("ED2KHash format to string is not correct %v", h.ToString())
 	}
 
 	if EMULE.ToString() != "31D6CFE0D10EE931B73C59D7E0C06FC0" {

@@ -18,7 +18,7 @@ type Session struct {
 	wg              sync.WaitGroup
 	listener        net.Listener
 	peerConnections []*PeerConnection
-	transfers       map[proto.EMuleHash]*Transfer
+	transfers       map[proto.ED2KHash]*Transfer
 
 	// server section
 	serverConnection           *ServerConnection
@@ -48,7 +48,7 @@ func CreateSession(config Config) *Session {
 		unregisterServerConnection: make(chan *ServerConnection),
 		registerPeerConnection:     make(chan *PeerConnection),
 		unregisterPeerConnection:   make(chan *PeerConnection),
-		transfers:                  make(map[proto.EMuleHash]*Transfer),
+		transfers:                  make(map[proto.ED2KHash]*Transfer),
 		transferChan:               make(chan *Transfer),
 		transferResumeData:         make(chan proto.AddTransferParameters),
 	}

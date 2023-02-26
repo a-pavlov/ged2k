@@ -54,8 +54,8 @@ func (rp *ReceivingPiece) InsertBlock(pb *PendingBlock) bool {
 	return true
 }
 
-func (rp *ReceivingPiece) Hash() proto.EMuleHash {
-	h := proto.EMuleHash{}
+func (rp *ReceivingPiece) Hash() proto.ED2KHash {
+	h := proto.ED2KHash{}
 	rp.hash.Sum(h[:])
 	return h
 }

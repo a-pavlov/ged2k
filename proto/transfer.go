@@ -87,8 +87,8 @@ func (atp AddTransferParameters) Size() int {
 	return sz
 }
 
-func CreateAddTransferParameters(hash EMuleHash, size uint64, filename string) AddTransferParameters {
-	return AddTransferParameters{Hashes: HashSet{Hash: hash, PieceHashes: make([]EMuleHash, 0)},
+func CreateAddTransferParameters(hash ED2KHash, size uint64, filename string) AddTransferParameters {
+	return AddTransferParameters{Hashes: HashSet{Hash: hash, PieceHashes: make([]ED2KHash, 0)},
 		Filesize:         size,
 		Filename:         String2ByteContainer(filename),
 		Pieces:           CreateBitField(0),

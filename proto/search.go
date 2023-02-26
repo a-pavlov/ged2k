@@ -499,7 +499,7 @@ func (sm SearchMore) Size() int {
 }
 
 type GetFileSources struct {
-	H       EMuleHash
+	H       ED2KHash
 	LowPart uint32
 	HiPart  uint32
 }
@@ -558,7 +558,7 @@ func (sr SearchResult) Size() int {
 }
 
 type SearchItem struct {
-	H               EMuleHash
+	H               ED2KHash
 	Point           Endpoint
 	Filename        string
 	Filesize        uint64

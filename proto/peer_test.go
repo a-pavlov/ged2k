@@ -43,7 +43,7 @@ func Test_requests(t *testing.T) {
 }
 
 func Test_HashSet(t *testing.T) {
-	hs := HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, LIBED2K, Terminal}}
+	hs := HashSet{Hash: EMULE, PieceHashes: []ED2KHash{EMULE, LIBED2K, Terminal}}
 	data := make([]byte, 16+2+16*3)
 	sb := StateBuffer{Data: data}
 	sb.Write(hs)
@@ -54,7 +54,7 @@ func Test_HashSet(t *testing.T) {
 	fmt.Printf("data %v", data)
 
 	if hs.Size() != 16+2+16*3 {
-		t.Errorf("EMuleHash set size is not correct %v", hs.Size())
+		t.Errorf("ED2KHash set size is not correct %v", hs.Size())
 	}
 
 	hs2 := HashSet{}
@@ -67,7 +67,7 @@ func Test_HashSet(t *testing.T) {
 			t.Errorf("Hashes are not equal")
 		} else {
 			if len(hs.PieceHashes) != len(hs2.PieceHashes) {
-				t.Errorf("EMuleHash sets size are not equal")
+				t.Errorf("ED2KHash sets size are not equal")
 			}
 
 			for i := 0; i < len(hs.PieceHashes); i++ {
@@ -86,7 +86,7 @@ func Test_HashSetCalculation(t *testing.T) {
 		PIECE_SIZE + 1,
 		PIECE_SIZE * 4,
 	}
-	hashes := []EMuleHash{
+	hashes := []ED2KHash{
 		String2Hash("1AA8AFE3018B38D9B4D880D0683CCEB5"),
 		String2Hash("E76BADB8F958D7685B4549D874699EE9"),
 		String2Hash("49EC2B5DEF507DEA73E106FEDB9697EE"),
@@ -100,7 +100,7 @@ func Test_HashSetCalculation(t *testing.T) {
 		}
 
 		pieces, _ := NumPiecesAndBlocks(uint64(lengths[i]))
-		hashset := make([]EMuleHash, 0)
+		hashset := make([]ED2KHash, 0)
 		remain := lengths[i]
 
 		for k := 0; k < pieces; k++ {
@@ -108,7 +108,7 @@ func Test_HashSetCalculation(t *testing.T) {
 			inPieceBytes := Min(PIECE_SIZE, remain)
 			startPos := lengths[i] - remain
 			hasher.Write(data[startPos : startPos+inPieceBytes])
-			var localHash EMuleHash
+			var localHash ED2KHash
 			hasher.Sum(localHash[:0])
 			hashset = append(hashset, localHash)
 			remain -= inPieceBytes

@@ -29,7 +29,7 @@ func Test_PieceBlockSerialize(t *testing.T) {
 
 func Test_AddTransferParameters(t *testing.T) {
 	atp_1 := AddTransferParameters{
-		Hashes:           HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, Terminal}},
+		Hashes:           HashSet{Hash: EMULE, PieceHashes: []ED2KHash{EMULE, Terminal}},
 		Filename:         String2ByteContainer("/tmp/test.data"),
 		Filesize:         uint64(PIECE_SIZE * 2),
 		DownloadedBlocks: make(map[int]*BitField)}
@@ -40,7 +40,7 @@ func Test_AddTransferParameters(t *testing.T) {
 	bf2.SetBit(49)
 
 	atp_2 := AddTransferParameters{
-		Hashes:   HashSet{Hash: EMULE, PieceHashes: []EMuleHash{EMULE, Terminal, ZERO}},
+		Hashes:   HashSet{Hash: EMULE, PieceHashes: []ED2KHash{EMULE, Terminal, ZERO}},
 		Filename: String2ByteContainer("/tmp/data1/data2/some_long_filename_here.data"),
 		Filesize: uint64(PIECE_SIZE * 2),
 		DownloadedBlocks: map[int]*BitField{

@@ -641,7 +641,7 @@ func CreateTag(data interface{}, id byte, name string) Tag {
 		return Tag{Type: TAGTYPE_BOOL, Id: id, Name: name, value: []byte{b}}
 	case []byte:
 		return Tag{Type: TAGTYPE_BLOB, Id: id, Name: name, value: data}
-	case EMuleHash:
+	case ED2KHash:
 		return Tag{Type: TAGTYPE_HASH16, Id: id, Name: name, value: data[:]}
 	default:
 		return Tag{Type: TAGTYPE_UNDEFINED, Id: FT_UNDEFINED, value: []byte{}}

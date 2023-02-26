@@ -167,7 +167,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			if peerConnection.transfer.addTransferParameters.Filesize >= proto.PIECE_SIZE_UINT64 {
 				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.Hash)
 			} else {
-				hs := proto.HashSet{Hash: peerConnection.transfer.Hash, PieceHashes: []proto.EMuleHash{peerConnection.transfer.Hash}}
+				hs := proto.HashSet{Hash: peerConnection.transfer.Hash, PieceHashes: []proto.ED2KHash{peerConnection.transfer.Hash}}
 				peerConnection.transfer.hashSetChan <- &hs
 			}
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:

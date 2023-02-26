@@ -11,7 +11,7 @@ import (
 type Transfer struct {
 	pause                 bool
 	stopped               bool
-	Hash                  proto.EMuleHash
+	Hash                  proto.ED2KHash
 	connections           []*PeerConnection
 	policy                Policy
 	piecePicker           *PiecePicker

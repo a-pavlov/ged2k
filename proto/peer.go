@@ -13,7 +13,7 @@ const SRC_EXT_OFFSET int = 10
 const CAPTHA_OFFSET int = 11
 
 type HelloAnswer struct {
-	Hash        EMuleHash
+	Hash        ED2KHash
 	Point       Endpoint
 	Properties  TagCollection
 	ServerPoint Endpoint
@@ -69,7 +69,7 @@ func (eh ExtHello) Size() int {
 }
 
 type FileAnswer struct {
-	Hash EMuleHash
+	Hash ED2KHash
 	Name ByteContainer
 }
 
@@ -86,7 +86,7 @@ func (fa FileAnswer) Size() int {
 }
 
 type FileStatusAnswer struct {
-	Hash EMuleHash
+	Hash ED2KHash
 	BF   BitField
 }
 
@@ -103,8 +103,8 @@ func (fs FileStatusAnswer) Size() int {
 }
 
 type HashSet struct {
-	Hash        EMuleHash
-	PieceHashes []EMuleHash
+	Hash        ED2KHash
+	PieceHashes []ED2KHash
 }
 
 func (hs *HashSet) Get(sb *StateBuffer) *StateBuffer {
@@ -115,7 +115,7 @@ func (hs *HashSet) Get(sb *StateBuffer) *StateBuffer {
 		return sb
 	}
 
-	hs.PieceHashes = make([]EMuleHash, int(size))
+	hs.PieceHashes = make([]ED2KHash, int(size))
 	for i, _ := range hs.PieceHashes {
 		sb.Read(&hs.PieceHashes[i])
 	}
@@ -135,9 +135,9 @@ func (hs HashSet) Size() int {
 	return DataSize(hs.Hash) + DataSize(uint16(len(hs.PieceHashes))) + len(hs.PieceHashes)*DataSize(hs.Hash)
 }
 
-func ResultHash(hashes []EMuleHash) EMuleHash {
+func ResultHash(hashes []ED2KHash) ED2KHash {
 	if len(hashes) == 0 {
-		return EMuleHash{}
+		return ED2KHash{}
 	}
 
 	if len(hashes) == 1 {
@@ -149,13 +149,13 @@ func ResultHash(hashes []EMuleHash) EMuleHash {
 		hasher.Write(x[:])
 	}
 
-	var result EMuleHash
+	var result ED2KHash
 	hasher.Sum(result[:0])
 	return result
 }
 
 type RequestParts32 struct {
-	Hash        EMuleHash
+	Hash        ED2KHash
 	BeginOffset [PARTS_IN_REQUEST]uint32
 	EndOffset   [PARTS_IN_REQUEST]uint32
 }
@@ -187,7 +187,7 @@ func (rp RequestParts32) Size() int {
 }
 
 type RequestParts64 struct {
-	Hash        EMuleHash
+	Hash        ED2KHash
 	BeginOffset [PARTS_IN_REQUEST]uint64
 	EndOffset   [PARTS_IN_REQUEST]uint64
 }
@@ -295,7 +295,7 @@ func (mo *MiscOptions2) SetLargeFiles() {
 }
 
 type SendingPart struct {
-	Hash     EMuleHash
+	Hash     ED2KHash
 	Begin    uint64
 	End      uint64
 	Extended bool
@@ -333,7 +333,7 @@ func (sp SendingPart) Size() int {
 }
 
 type CompressedPart struct {
-	Hash                 EMuleHash
+	Hash                 ED2KHash
 	Offset               uint64
 	CompressedDataLength uint32
 	Extended             bool
