@@ -166,7 +166,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				log.Println("File status received, bits:", fs.BF.Bits(), "count", fs.BF.Count())
 			}
 
-			if peerConnection.transfer.addTransferParameters.Filesize >= proto.PIECE_SIZE_UINT64 {
+			if peerConnection.transfer.Size >= proto.PIECE_SIZE_UINT64 {
 				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.Hash)
 			} else {
 				hs := proto.HashSet{Hash: peerConnection.transfer.Hash, PieceHashes: []proto.ED2KHash{peerConnection.transfer.Hash}}

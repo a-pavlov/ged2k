@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -85,7 +84,7 @@ func (s *Session) Tick() {
 		select {
 		case sc := <-s.unregisterServerConnection:
 			{
-				fmt.Printf("Server connection closed, reason: \"%v\"\n", sc.lastError)
+				log.Printf("Server connection closed, reason: \"%v\"\n", sc.lastError)
 				s.serverConnection = nil
 				serverConnected = false
 				serverLastRes = time.Time{}
@@ -99,10 +98,10 @@ func (s *Session) Tick() {
 			}
 		case sc := <-s.registerServerConnection:
 			{
-				fmt.Println("Server connection established")
+				log.Println("Server connection established")
 				s.serverConnection = sc
 				if candidate != nil || serverRequestedDisconnect {
-					fmt.Println("Server disconnect was requested")
+					log.Println("Server disconnect was requested")
 					//serverCloseRequested = true
 					s.serverConnection.connection.Close()
 				}
@@ -111,17 +110,17 @@ func (s *Session) Tick() {
 			}
 		case cmd, ok := <-s.comm:
 			if !ok {
-				fmt.Println("Session exit requested")
+				log.Println("Session exit requested")
 				execute = false
 			} else {
-				fmt.Println("Session received cmd:", cmd)
+				log.Println("Session received cmd:", cmd)
 				elems := strings.Split(cmd, " ")
 
 				switch elems[0] {
 				case "hello":
-					fmt.Println("Hello !!!")
+					log.Println("Hello !!!")
 				case "connect":
-					fmt.Println("Requested connect to", elems[1])
+					log.Println("Requested connect to", elems[1])
 					if s.serverConnection == nil {
 						go CreateServerConnection(elems[1]).Start(s)
 					} else {
@@ -171,36 +170,35 @@ func (s *Session) Tick() {
 					for i := 1; i < len(elems); i++ {
 						rd, err := ioutil.ReadFile(elems[1])
 						if err != nil {
-							fmt.Println("Error read resume data file", err)
+							log.Println("Error read resume data file", err)
 						} else {
 							sb := proto.StateBuffer{Data: rd}
 							var atp proto.AddTransferParameters
 							sb.Read(&atp)
 							if sb.Error() == nil {
-								// start transfer here
-								t := CreateTransfer(atp, "")
-								go t.Start(s)
+								t := NewTransfer(atp.Hashes.Hash, atp.Filename.ToString(), atp.Filesize)
+								go t.Start(s, &atp)
 							} else {
-								fmt.Errorf("Can not read resume data file %v\n", sb.Error())
+								log.Printf("Can not read resume data file %v\n", sb.Error())
 							}
 						}
 					}
 				case "tran":
-					fmt.Println("tran command accepted")
+					log.Println("tran command accepted")
 					filename := elems[1]
 					hash := proto.String2Hash(elems[2])
 					size, err := strconv.ParseUint(elems[3], 10, 64)
 					if err == nil {
-						fmt.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
-						tran := CreateTransfer(proto.CreateAddTransferParameters(hash, size, filename), filename)
+						log.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
+						tran := NewTransfer(hash, filename, size)
 						s.transfers[hash] = tran
-						go tran.Start(s)
+						go tran.Start(s, nil)
 					} else {
-						fmt.Println("Error on transfer adding", err)
+						log.Println("Error on transfer adding", err)
 					}
 
 				default:
-					fmt.Printf("Unknown command %s\n", cmd)
+					log.Printf("Unknown command %s\n", cmd)
 				}
 			}
 		case c, ok := <-s.serverPackets:
@@ -211,25 +209,25 @@ func (s *Session) Tick() {
 				if c != nil {
 					switch data := c.(type) {
 					case *proto.SearchResult:
-						fmt.Printf("session received search result size %d\n", data.Size())
+						log.Printf("session received search result size %d\n", data.Size())
 						for _, x := range data.Items {
 							a := proto.ToSearchItem(&x)
-							fmt.Println("File", a.Filename, "size", a.Filesize, "sources", a.Sources, "complete sources", a.CompleteSources)
+							log.Println("File", a.Filename, "size", a.Filesize, "sources", a.Sources, "complete sources", a.CompleteSources)
 						}
 					case *proto.FoundFileSources:
-						fmt.Printf("session found file sources %d\n", data.Size())
+						log.Printf("session found file sources %d\n", data.Size())
 					case *proto.ByteContainer:
-						fmt.Println("Message from server", string(*data))
+						log.Println("Message from server", string(*data))
 					default:
-						fmt.Println("session: unknown server packet received")
+						log.Println("session: unknown server packet received")
 					}
 				}
 			}
 		case <-tick:
-			fmt.Println("Tick")
+			log.Println("Tick")
 			for i, x := range s.transfers {
 				x.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S', Connectable: true})
-				fmt.Println("Add peer to", i)
+				log.Println("Add peer to", i)
 			}
 			currentTime := time.Now()
 			if s.serverConnection != nil {
@@ -336,20 +334,20 @@ func (s *Session) Tick() {
 			}
 			transfer.connections = transfer.connections[:0]
 		case atp := <-s.transferResumeData:
-			fmt.Println("Save resume data - ignore for now", atp.Filename.ToString())
+			log.Println("Save resume data - ignore for now", atp.Filename.ToString())
 		}
 	}
 
 	e = s.listener.Close()
 	if e != nil {
-		fmt.Printf("Listener stop error %v\n", e)
+		log.Printf("Listener stop error %v\n", e)
 	}
 
 	//for k, _ := range s.connections {
 	//	k.conn.Close()
 	//}
 
-	fmt.Println("Session closed")
+	log.Println("Session closed")
 }
 
 func (s *Session) Start() {
@@ -357,7 +355,7 @@ func (s *Session) Start() {
 }
 
 func (s *Session) Stop() {
-	fmt.Println("Session stop requested")
+	log.Println("Session stop requested")
 	for _, x := range s.transfers {
 		x.Stop()
 	}
@@ -375,11 +373,11 @@ func (s *Session) Stop() {
 }
 
 func (s *Session) accept(listener *net.Listener) {
-	fmt.Println("Session listener started")
+	log.Println("Session listener started")
 	for {
 		conn, e := (*listener).Accept()
 		if e != nil {
-			fmt.Printf("Accepting error %v\n", e)
+			log.Printf("Accepting error %v\n", e)
 			break
 		} else {
 			pc := PeerConnection{connection: conn}

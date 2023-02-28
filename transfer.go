@@ -11,38 +11,39 @@ import (
 )
 
 type Transfer struct {
-	pause                 bool
-	stopped               bool
-	Hash                  proto.ED2KHash
-	connections           []*PeerConnection
-	policy                Policy
-	piecePicker           *PiecePicker
-	waitGroup             sync.WaitGroup
-	cmdChan               chan string
-	dataChan              chan *PendingBlock
-	sourcesChan           chan proto.FoundFileSources
-	peerConnChan          chan *PeerConnection
-	hashSetChan           chan *proto.HashSet
-	stat                  Statistics
-	Size                  uint64
-	filename              string
-	incomingPieces        map[int]*ReceivingPiece
-	addTransferParameters proto.AddTransferParameters
-	lastError             error
+	pause    bool
+	stopped  bool
+	Hash     proto.ED2KHash
+	Size     uint64
+	Filename string
+
+	connections    []*PeerConnection
+	policy         Policy
+	piecePicker    *PiecePicker
+	waitGroup      sync.WaitGroup
+	cmdChan        chan string
+	dataChan       chan *PendingBlock
+	sourcesChan    chan proto.FoundFileSources
+	peerConnChan   chan *PeerConnection
+	hashSetChan    chan *proto.HashSet
+	stat           Statistics
+	incomingPieces map[int]*ReceivingPiece
+	//addTransferParameters proto.AddTransferParameters
+	lastError error
 }
 
-func CreateTransfer(atp proto.AddTransferParameters, filename string) *Transfer {
-	return &Transfer{Hash: atp.Hashes.Hash,
-		cmdChan:               make(chan string),
-		dataChan:              make(chan *PendingBlock, 10),
-		sourcesChan:           make(chan proto.FoundFileSources),
-		peerConnChan:          make(chan *PeerConnection),
-		hashSetChan:           make(chan *proto.HashSet),
-		filename:              filename,
-		piecePicker:           CreatePiecePicker(proto.NumPiecesAndBlocks(atp.Filesize)),
-		incomingPieces:        make(map[int]*ReceivingPiece),
-		addTransferParameters: atp,
-		Size:                  atp.Filesize,
+func NewTransfer(hash proto.ED2KHash, filename string, size uint64) *Transfer {
+	return &Transfer{
+		Hash:           hash,
+		Size:           size,
+		Filename:       filename,
+		cmdChan:        make(chan string),
+		dataChan:       make(chan *PendingBlock, 10),
+		sourcesChan:    make(chan proto.FoundFileSources),
+		peerConnChan:   make(chan *PeerConnection),
+		hashSetChan:    make(chan *proto.HashSet),
+		piecePicker:    CreatePiecePicker(proto.NumPiecesAndBlocks(size)),
+		incomingPieces: make(map[int]*ReceivingPiece),
 	}
 }
 
@@ -67,16 +68,16 @@ func (t *Transfer) AttachPeer(connection *PeerConnection) {
 	connection.transfer = t
 }
 
-func (t *Transfer) Start(s *Session) {
+func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 	t.waitGroup.Add(1)
 
 	var hashSet *proto.HashSet
-	file, err := os.OpenFile(t.filename, os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(t.Filename, os.O_WRONLY|os.O_CREATE, 0666)
 
 	if err != nil {
 		// exit by error
 		defer t.waitGroup.Done()
-		log.Println("Error on open file", err, t.filename)
+		log.Println("Error on open file", err, t.Filename)
 		t.lastError = err
 		s.transferChan <- t
 		return
@@ -84,6 +85,18 @@ func (t *Transfer) Start(s *Session) {
 
 	defer file.Close()
 	defer t.waitGroup.Done()
+
+	if atp != nil {
+		// restore state
+	}
+
+	// fix it with restore state
+	piecesCount, _ := proto.NumPiecesAndBlocks(t.Size)
+	hashes := proto.HashSet{Hash: t.Hash, PieceHashes: make([]proto.ED2KHash, 0)}
+	downloadedBlocks := make(map[int]*proto.BitField)
+	localFilename := proto.ByteContainer(t.Filename)
+	pieces := proto.CreateBitField(piecesCount)
+
 	execute := true
 	log.Println("Transfer cycle in running")
 	for execute {
@@ -112,14 +125,20 @@ func (t *Transfer) Start(s *Session) {
 				file.Write(pb.data)
 				file.Sync()
 				// need to save resume data:
-				_, ok := t.addTransferParameters.DownloadedBlocks[pb.block.PieceIndex]
+				_, ok := downloadedBlocks[pb.block.PieceIndex]
 				if !ok {
 					bf := proto.CreateBitField(proto.BLOCKS_PER_PIECE)
-					t.addTransferParameters.DownloadedBlocks[pb.block.PieceIndex] = &bf
+					downloadedBlocks[pb.block.PieceIndex] = &bf
 				}
 
-				t.addTransferParameters.DownloadedBlocks[pb.block.PieceIndex].SetBit(pb.block.BlockIndex)
-				s.transferResumeData <- t.addTransferParameters
+				downloadedBlocks[pb.block.PieceIndex].SetBit(pb.block.BlockIndex)
+				s.transferResumeData <- proto.AddTransferParameters{
+					Hashes:           hashes,
+					Filename:         localFilename,
+					Filesize:         t.Size,
+					Pieces:           pieces,
+					DownloadedBlocks: downloadedBlocks,
+				}
 			} else {
 				log.Printf("File seek error: %v\n", e)
 				// raise the file error here and stop transfer
@@ -137,14 +156,20 @@ func (t *Transfer) Start(s *Session) {
 					// match
 					// need to save resume data:
 					log.Println("Hash match")
-					t.addTransferParameters.Pieces.SetBit(pb.block.PieceIndex)
+					pieces.SetBit(pb.block.PieceIndex)
 				} else {
 					log.Printf("Hash not match: %x expected %x\n", rp.Hash(), hashSet.PieceHashes[pb.block.PieceIndex])
 					// hash not match
 				}
 
-				delete(t.addTransferParameters.DownloadedBlocks, pb.block.PieceIndex)
-				s.transferResumeData <- t.addTransferParameters
+				delete(downloadedBlocks, pb.block.PieceIndex)
+				s.transferResumeData <- proto.AddTransferParameters{
+					Hashes:           hashes,
+					Filename:         localFilename,
+					Filesize:         t.Size,
+					Pieces:           pieces,
+					DownloadedBlocks: downloadedBlocks,
+				}
 
 				wasFinished := t.piecePicker.IsFinished()
 				t.piecePicker.SetHave(pb.block.PieceIndex)
