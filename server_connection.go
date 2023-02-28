@@ -1,11 +1,12 @@
 package main
 
 import (
-	"fmt"
-	"github.com/a-pavlov/ged2k/proto"
+	"log"
 	"net"
 	"reflect"
 	"time"
+
+	"github.com/a-pavlov/ged2k/proto"
 )
 
 type ServerConnection struct {
@@ -20,7 +21,7 @@ func CreateServerConnection(a string) *ServerConnection {
 }
 
 func (serverConnection *ServerConnection) Start(s *Session) {
-	fmt.Println("Server conn init", time.Now())
+	log.Println("Server conn init", time.Now())
 	connection, err := net.Dial("tcp", serverConnection.address)
 	if err != nil {
 		serverConnection.lastError = err
@@ -28,7 +29,7 @@ func (serverConnection *ServerConnection) Start(s *Session) {
 		return
 	}
 
-	fmt.Println("Connected!", time.Now())
+	log.Println("Connected!", time.Now())
 	serverConnection.connection = connection
 
 	s.registerServerConnection <- serverConnection
@@ -46,7 +47,7 @@ func (serverConnection *ServerConnection) Start(s *Session) {
 	hello.Properties = append(hello.Properties, proto.CreateTag(versionClient, proto.CT_EMULE_VERSION, ""))
 
 	_, serverConnection.lastError = serverConnection.SendPacket(&hello)
-	fmt.Println("Send hello", time.Now())
+	log.Println("Send hello", time.Now())
 
 	if serverConnection.lastError != nil {
 		s.unregisterServerConnection <- serverConnection
@@ -81,36 +82,36 @@ func (serverConnection *ServerConnection) Start(s *Session) {
 			bc.Get(&sb)
 			if sb.Error() == nil {
 				s.serverPackets <- &bc
-				fmt.Println("Receive message from server", string(bc))
+				log.Println("Receive message from server", string(bc))
 			}
 		case proto.OP_SERVERSTATUS:
 			ss := proto.Status{}
 			ss.Get(&sb)
 			if sb.Error() == nil {
 				s.serverPackets <- &ss
-				fmt.Println("Server status files:", ss.FilesCount, "users", ss.UsersCount)
+				log.Println("Server status files:", ss.FilesCount, "users", ss.UsersCount)
 			}
 		case proto.OP_IDCHANGE:
 			idc := proto.IdChange{}
 			idc.Get(&sb)
 			if sb.Error() == nil {
-				fmt.Println("Server id change", idc.ClientId)
+				log.Println("Server id change", idc.ClientId)
 				s.serverPackets <- &idc
 			}
 		case proto.OP_SERVERIDENT:
 			p := proto.UsualPacket{}
 			p.Get(&sb)
 			if sb.Error() == nil {
-				fmt.Println("Received server info packet")
+				log.Println("Received server info packet")
 			}
 		case proto.OP_SEARCHRESULT:
 			p := proto.SearchResult{}
 			p.Get(&sb)
 			if sb.Error() == nil {
-				fmt.Printf("Search result received: %d, more results %v\n", len(p.Items), p.MoreResults)
+				log.Printf("Search result received: %d, more results %v\n", len(p.Items), p.MoreResults)
 				s.serverPackets <- &p
 			} else {
-				fmt.Printf("Unable to de-serealize %v\n", sb.Error())
+				log.Printf("Unable to de-serealize %v\n", sb.Error())
 			}
 		case proto.OP_SEARCHREQUEST:
 			// ignore
@@ -127,7 +128,7 @@ func (serverConnection *ServerConnection) Start(s *Session) {
 		case proto.OP_CALLBACK_FAIL:
 			// ignore
 		default:
-			fmt.Printf("Packet %x", bytes)
+			log.Printf("Packet %x", bytes)
 		}
 
 		if sb.Error() != nil {
@@ -146,7 +147,7 @@ func (sc *ServerConnection) SendPacket(data proto.Serializable) (int, error) {
 	data.Put(&stateBuffer)
 
 	if stateBuffer.Error() != nil {
-		fmt.Printf("Send error %v for %d bytes\n", stateBuffer.Error(), sz)
+		log.Printf("Send error %v for %d bytes\n", stateBuffer.Error(), sz)
 		return 0, stateBuffer.Error()
 	}
 
@@ -155,19 +156,19 @@ func (sc *ServerConnection) SendPacket(data proto.Serializable) (int, error) {
 	switch data.(type) {
 	case *proto.UsualPacket:
 		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_LOGINREQUEST}
-		fmt.Println("Login request", sz, "bytes")
+		log.Println("Login request", sz, "bytes")
 	case *proto.SearchRequest:
 		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_SEARCHREQUEST}
-		fmt.Printf("Search request %d bytes\n", sz)
+		log.Printf("Search request %d bytes\n", sz)
 	case *proto.SearchMore:
 		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_QUERY_MORE_RESULT}
-		fmt.Printf("Search more result %d bytes\n", sz)
+		log.Printf("Search more result %d bytes\n", sz)
 	case *proto.GetFileSources:
 		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_GETSOURCES}
-		fmt.Printf("Get sources request %d bytes\n", sz)
+		log.Printf("Get sources request %d bytes\n", sz)
 	case *proto.GetServerList:
 		ph = proto.PacketHeader{Protocol: proto.OP_EDONKEYHEADER, Bytes: bytesCount, Packet: proto.OP_GETSERVERLIST}
-		fmt.Printf("Server list request %d bytes\n", sz)
+		log.Printf("Server list request %d bytes\n", sz)
 	default:
 		panic("ServerConnection Send with unknown type " + reflect.TypeOf(data).String())
 	}

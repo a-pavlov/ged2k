@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math"
 	"reflect"
 	"strconv"
@@ -399,7 +400,7 @@ func FromString(s string) (Endpoint, error) {
 	parts := strings.Split(s, ":")
 
 	if len(parts) != 2 {
-		return Endpoint{}, fmt.Errorf("can not find ip-port separator :")
+		return Endpoint{}, fmt.Errorf("can not find ip-port separator: %s", s)
 	}
 
 	ips := strings.Split(parts[0], ".")
@@ -606,7 +607,7 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 
 	ph.Read(pc.data[:6])
 
-	fmt.Printf("Packet header %x/%d/%x\n", ph.Protocol, ph.Bytes, ph.Packet)
+	log.Printf("Packet header HEX protocol/packet:[%x][%x] DEC bytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
 
 	bytesToRead := int(ph.Bytes)
 	switch {
@@ -633,7 +634,7 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 			newSize = bytesToRead
 		}
 
-		fmt.Println("reallocate", newSize)
+		log.Println("reallocate", newSize)
 
 		buf := make([]byte, newSize)
 		pc.data = buf

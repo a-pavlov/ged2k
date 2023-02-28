@@ -2,9 +2,10 @@ package proto
 
 import (
 	"bytes"
-	"fmt"
-	"golang.org/x/crypto/md4"
+	"log"
 	"testing"
+
+	"golang.org/x/crypto/md4"
 )
 
 func Test_requests(t *testing.T) {
@@ -51,7 +52,7 @@ func Test_HashSet(t *testing.T) {
 		t.Errorf("Can not write hash set %v", sb.Error())
 	}
 
-	fmt.Printf("data %v", data)
+	log.Printf("data %v", data)
 
 	if hs.Size() != 16+2+16*3 {
 		t.Errorf("ED2KHash set size is not correct %v", hs.Size())

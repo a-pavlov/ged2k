@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"testing"
 
@@ -108,13 +109,13 @@ func Test_pieceHash(t *testing.T) {
 	blockSize := 190 * 1024
 	offset := 0
 	data := make([]byte, blockSize)
-	fmt.Println("Started hash")
+	log.Println("Started hash")
 	blocksProcessed := 0
 	hash := md4.New()
 	for offset < size {
 		currBlockSize := Min(size-offset, len(data))
 		hash.Write(data[:currBlockSize])
-		fmt.Println("ED2KHash for bytes", currBlockSize)
+		log.Println("ED2KHash for bytes", currBlockSize)
 		offset += currBlockSize
 		blocksProcessed++
 	}

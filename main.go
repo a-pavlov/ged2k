@@ -2,14 +2,23 @@ package main
 
 import (
 	"bufio"
-	"fmt"
-	"github.com/a-pavlov/ged2k/proto"
+	"log"
 	"os"
 	"strings"
+
+	"github.com/a-pavlov/ged2k/proto"
 )
 
 func main() {
-	fmt.Println("Hello ged2k")
+	//file, err := os.OpenFile("gED2KLog.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	//log.SetOutput(file)
+
+	log.Println("GED2K has been started")
 	reader := bufio.NewReader(os.Stdin)
 	cfg := Config{UserAgent: proto.EMULE, ListenPort: 4888, Name: "TestGed2k", MaxConnections: 100, ModName: "jed2k", ClientName: "jed2k", AppVersion: 0x3c}
 	s := CreateSession(cfg)

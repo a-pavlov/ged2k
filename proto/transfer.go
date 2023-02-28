@@ -1,8 +1,6 @@
 package proto
 
-import (
-	"fmt"
-)
+import "fmt"
 
 type PieceBlock struct {
 	PieceIndex int

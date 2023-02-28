@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"compress/zlib"
 	"fmt"
+	"io"
+	"log"
+	"net"
+
 	"github.com/a-pavlov/ged2k/data"
 	"github.com/a-pavlov/ged2k/proto"
-	"io"
-	"net"
 )
 
 type PendingBlock struct {
@@ -73,11 +75,11 @@ type PeerConnection struct {
 }
 
 func (peerConnection *PeerConnection) Start(s *Session) {
-	fmt.Println("Peer connection start", peerConnection.peer.endpoint.AsString())
+	log.Println("Peer connection start", peerConnection.peer.endpoint.AsString())
 	if peerConnection.connection == nil {
 		conn, err := net.Dial("tcp", peerConnection.peer.endpoint.AsString())
 		if err != nil {
-			fmt.Println("Can not connect", err)
+			log.Println("Can not connect", err)
 			s.unregisterPeerConnection <- peerConnection
 			return
 		}
@@ -85,7 +87,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 		peerConnection.connection = conn
 		_, err = peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_HELLO, &hello)
 		if err != nil {
-			fmt.Printf("Can not send hello: %v\n", err)
+			log.Printf("Can not send hello: %v\n", err)
 			s.unregisterPeerConnection <- peerConnection
 		}
 	}
@@ -96,7 +98,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 		ph, packetBytes, err := pc.Read(peerConnection.connection)
 
 		if err != nil {
-			fmt.Printf("Peer connection read error %v\n", err)
+			log.Printf("Peer connection read error %v\n", err)
 			peerConnection.lastError = err
 			s.unregisterPeerConnection <- peerConnection
 			break
@@ -106,7 +108,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 
 		switch {
 		case ph.Packet == proto.OP_HELLO:
-			fmt.Println("Peer connection: HELLO")
+			log.Println("Peer connection: HELLO")
 			hello := proto.Hello{}
 			sb.Read(&hello)
 			if sb.Error() != nil {
@@ -119,7 +121,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			// send hello answer
 			// send file request
 		case ph.Packet == proto.OP_HELLOANSWER:
-			fmt.Println("Peer connection: HELLO_ANSWER")
+			log.Println("Peer connection: HELLO_ANSWER")
 			helloAnswer := proto.HelloAnswer{}
 			sb.Read(&helloAnswer)
 			if sb.Error() != nil {
@@ -131,7 +133,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 		// req filename
 		//peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 		case ph.Packet == proto.OP_PUBLICIP_REQ && ph.Protocol == proto.OP_EMULEPROT:
-			fmt.Println("Public IP request has been received")
+			log.Println("Public IP request has been received")
 			ep, err := proto.FromString("192.168.111.11:9999")
 			if err == nil {
 				ip := proto.IP(ep.Ip)
@@ -145,7 +147,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				peerConnection.lastError = sb.Error()
 				break
 			} else {
-				fmt.Println("Received filename answer", fa.Name.ToString())
+				log.Println("Received filename answer", fa.Name.ToString())
 				peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_SETREQFILEID, &peerConnection.transfer.Hash)
 			}
 		case ph.Packet == proto.OP_CANCELTRANSFER:
@@ -158,10 +160,10 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			sb.Read(&fs)
 			if sb.Error() != nil {
 				peerConnection.lastError = sb.Error()
-				fmt.Println("Error on file status answer", sb.Error())
+				log.Println("Error on file status answer", sb.Error())
 				break
 			} else {
-				fmt.Println("File status received, bits:", fs.BF.Bits(), "count", fs.BF.Count())
+				log.Println("File status received, bits:", fs.BF.Bits(), "count", fs.BF.Count())
 			}
 
 			if peerConnection.transfer.addTransferParameters.Filesize >= proto.PIECE_SIZE_UINT64 {
@@ -184,10 +186,10 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 			sb.Read(&hs)
 			if sb.Error() != nil {
 				peerConnection.lastError = sb.Error()
-				fmt.Println("Can not read hash set answer")
+				log.Println("Can not read hash set answer")
 				break
 			} else {
-				fmt.Println("Received hash set answer")
+				log.Println("Received hash set answer")
 			}
 
 			peerConnection.transfer.hashSetChan <- &hs
@@ -195,16 +197,16 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 		case ph.Packet == proto.OP_STARTUPLOADREQ:
 			// receive start upload request
 		case ph.Packet == proto.OP_ACCEPTUPLOADREQ:
-			fmt.Println("received accept uploadow req")
+			log.Println("received accept uploadow req")
 			peerConnection.transfer.peerConnChan <- peerConnection
 			// got accept upload
 		case ph.Packet == proto.OP_QUEUERANKING:
 			rank := sb.ReadUint16()
-			fmt.Println("queue ranked", rank)
+			log.Println("queue ranked", rank)
 			// got queue ranking
 		case ph.Packet == proto.OP_OUTOFPARTREQS:
 			// got out of parts
-			fmt.Println("out of parts received")
+			log.Println("out of parts received")
 		case ph.Packet == proto.OP_REQUESTPARTS:
 			// got 32 request parts request
 		case ph.Packet == proto.OP_REQUESTPARTS_I64:
@@ -217,7 +219,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 				break
 			}
 
-			fmt.Println("Peer connection sending part", sp.Begin, sp.End)
+			log.Println("Peer connection sending part", sp.Begin, sp.End)
 
 			block := proto.FromOffset(sp.Begin)
 
@@ -226,7 +228,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 					if x.data != nil {
 						_, err := x.Receive(peerConnection.connection, sp.Begin, sp.End)
 						if err != nil {
-							fmt.Printf("Peer connection error on receive data: %v\n", err)
+							log.Printf("Peer connection error on receive data: %v\n", err)
 							peerConnection.lastError = err
 							// raise error and close peerConnection
 						}
@@ -294,7 +296,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 		case ph.Packet == proto.OP_END_OF_DOWNLOAD:
 			// got end of download response
 		default:
-			fmt.Printf("Receive unknown protocol:%x packet: %x packetBytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
+			log.Printf("Receive unknown protocol:%x packet: %x packetBytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
 		}
 	}
 
@@ -310,22 +312,22 @@ func (connection *PeerConnection) SendPacket(protocol byte, packet byte, data pr
 	}
 
 	sz := proto.DataSize(data)
-	fmt.Printf("Packet size calculated: %d\n", sz)
+	log.Printf("Packet size calculated: %d\n", sz)
 	bytes := make([]byte, sz+proto.HEADER_SIZE)
 	stateBuffer := proto.StateBuffer{Data: bytes[proto.HEADER_SIZE:]}
 	data.Put(&stateBuffer)
 
 	if stateBuffer.Error() != nil {
-		fmt.Printf("Send error %v for %d bytes\n", stateBuffer.Error(), sz)
+		log.Printf("Send error %v for %d bytes\n", stateBuffer.Error(), sz)
 		return 0, stateBuffer.Error()
 	} else {
-		fmt.Println("Wrote", stateBuffer.Offset(), "bytes")
+		log.Println("Wrote", stateBuffer.Offset(), "bytes")
 	}
 
 	bytesCount := uint32(stateBuffer.Offset() + 1)
 	ph := proto.PacketHeader{Protocol: protocol, Packet: packet, Bytes: bytesCount}
 	ph.Write(bytes)
-	fmt.Printf("Bytes: %x\n", bytes)
+	log.Printf("Bytes: %x\n", bytes)
 	return connection.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
 }
 
@@ -337,7 +339,7 @@ func (peerConnection *PeerConnection) Close() {
 	peerConnection.closedByRequest = true
 	err := peerConnection.connection.Close()
 	if err != nil {
-		fmt.Printf("unable to close peed connection %v", err)
+		log.Printf("unable to close peed connection %v", err)
 	}
 }
 

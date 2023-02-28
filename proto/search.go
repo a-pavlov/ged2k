@@ -2,6 +2,7 @@ package proto
 
 import (
 	"fmt"
+	"log"
 )
 
 const SEARCH_TYPE_BOOL byte = 0x00
@@ -226,7 +227,7 @@ func addOperand(dst []Serializable, op Serializable) []Serializable {
 
 			if hasOpenParen && isCloseParen {
 				// need to report error here
-				fmt.Println("Open-close paren found on addOperand")
+				log.Println("Open-close paren found on addOperand")
 			}
 		}
 	}

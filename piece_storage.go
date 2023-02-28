@@ -1,9 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"github.com/a-pavlov/ged2k/proto"
 	"hash"
+	"log"
+
+	"github.com/a-pavlov/ged2k/proto"
 )
 
 type ReceivingPiece struct {
@@ -25,7 +26,7 @@ func (rp *ReceivingPiece) InsertBlock(pb *PendingBlock) bool {
 		}
 	}
 
-	fmt.Println("skip blocks", skipBlocks)
+	log.Println("skip blocks", skipBlocks)
 
 	switch skipBlocks {
 	case 0:

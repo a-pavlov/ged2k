@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -39,6 +40,7 @@ type Session struct {
 }
 
 func CreateSession(config Config) *Session {
+	log.Println("Create session")
 	return &Session{
 		configuration:              config,
 		comm:                       make(chan string),

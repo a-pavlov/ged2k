@@ -1,12 +1,13 @@
 package main
 
 import (
-	"fmt"
-	"github.com/a-pavlov/ged2k/proto"
-	"golang.org/x/crypto/md4"
+	"log"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/a-pavlov/ged2k/proto"
+	"golang.org/x/crypto/md4"
 )
 
 type Transfer struct {
@@ -75,7 +76,7 @@ func (t *Transfer) Start(s *Session) {
 	if err != nil {
 		// exit by error
 		defer t.waitGroup.Done()
-		fmt.Println("Error on open file", err, t.filename)
+		log.Println("Error on open file", err, t.filename)
 		t.lastError = err
 		s.transferChan <- t
 		return
@@ -84,12 +85,12 @@ func (t *Transfer) Start(s *Session) {
 	defer file.Close()
 	defer t.waitGroup.Done()
 	execute := true
-	fmt.Println("Transfer cycle in running")
+	log.Println("Transfer cycle in running")
 	for execute {
 		select {
 		case _, ok := <-t.cmdChan:
 			if !ok {
-				fmt.Println("Transfer exit requested")
+				log.Println("Transfer exit requested")
 				execute = false
 			}
 		case hashSet = <-t.hashSetChan:
@@ -120,13 +121,13 @@ func (t *Transfer) Start(s *Session) {
 				t.addTransferParameters.DownloadedBlocks[pb.block.PieceIndex].SetBit(pb.block.BlockIndex)
 				s.transferResumeData <- t.addTransferParameters
 			} else {
-				fmt.Printf("File seek error: %v\n", e)
+				log.Printf("File seek error: %v\n", e)
 				// raise the file error here and stop transfer
 			}
 
 			// piece completely downloaded
 			if len(rp.blocks) == t.piecePicker.BlocksInPiece(pb.block.PieceIndex) {
-				fmt.Println("Ready to hash")
+				log.Println("Ready to hash")
 				// check hash here
 				if hashSet == nil {
 					panic("hash set is nil!!")
@@ -135,10 +136,10 @@ func (t *Transfer) Start(s *Session) {
 				if rp.Hash().Equals(hashSet.PieceHashes[pb.block.PieceIndex]) {
 					// match
 					// need to save resume data:
-					fmt.Println("Hash match")
+					log.Println("Hash match")
 					t.addTransferParameters.Pieces.SetBit(pb.block.PieceIndex)
 				} else {
-					fmt.Printf("Hash not match: %x expected %x\n", rp.Hash(), hashSet.PieceHashes[pb.block.PieceIndex])
+					log.Printf("Hash not match: %x expected %x\n", rp.Hash(), hashSet.PieceHashes[pb.block.PieceIndex])
 					// hash not match
 				}
 
@@ -153,14 +154,14 @@ func (t *Transfer) Start(s *Session) {
 					// status finished
 					// need save resume data
 					// nothing to do - all pieces marked as downloaded
-					fmt.Println("All data was received, close file")
+					log.Println("All data was received, close file")
 					file.Close()
 					s.transferChan <- t
 				}
 			}
 
 		case peerConnection := <-t.peerConnChan:
-			fmt.Println("Ready to download file")
+			log.Println("Ready to download file")
 			blocks := t.piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
 			req := proto.RequestParts64{Hash: peerConnection.transfer.Hash}
 			for i, x := range blocks {
@@ -172,19 +173,19 @@ func (t *Transfer) Start(s *Session) {
 				peerConnection.requestedBlocks = append(peerConnection.requestedBlocks, &pb)
 				req.BeginOffset[i] = pb.region.Begin()
 				req.EndOffset[i] = pb.region.Segments[0].End
-				fmt.Println("Add to request", req.BeginOffset[i], req.EndOffset[i])
+				log.Println("Add to request", req.BeginOffset[i], req.EndOffset[i])
 			}
 
 			if len(blocks) > 0 {
 				go peerConnection.SendPacket(proto.OP_EMULEPROT, proto.OP_REQUESTPARTS_I64, &req)
 			} else {
-				fmt.Println("No more blocks for peer connection")
+				log.Println("No more blocks for peer connection")
 				peerConnection.Close()
 			}
 		}
 	}
 
-	fmt.Println("Transfer main cycle exit")
+	log.Println("Transfer main cycle exit")
 }
 
 func (t *Transfer) Stop() {
@@ -250,7 +251,7 @@ E:
 			}
 		case comm, ok := <-t.commChan:
 			if !ok {
-				fmt.Println("Transfer exit requested")
+				log.Println("Transfer exit requested")
 				break E
 			}
 
@@ -263,7 +264,7 @@ E:
 				t.pause = false
 			}
 		case <-tick:
-			fmt.Println("Transfer tick")
+			log.Println("Transfer tick")
 			if !t.pause && !t.IsFinsihed() {
 				for i := 0; i < 3; i++ {
 					peer := t.policy.FindConnectCandidate(time.Now())

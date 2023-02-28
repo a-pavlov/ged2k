@@ -2,7 +2,7 @@ package proto
 
 import (
 	"bytes"
-	"fmt"
+	"log"
 	"testing"
 )
 
@@ -80,7 +80,7 @@ func Test_AddTransferParameters(t *testing.T) {
 		t.Errorf("Size error on read atp 1: %v expected %v", atp_1_r.Size(), sb2.Offset())
 	}
 
-	fmt.Println("ATP1 size", atp_1_r.Size())
+	log.Println("ATP1 size", atp_1_r.Size())
 
 	var atp_2_r AddTransferParameters
 	sb2.Read(&atp_2_r)
