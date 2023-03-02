@@ -72,12 +72,12 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 	t.waitGroup.Add(1)
 
 	var hashSet *proto.HashSet
-	file, err := os.OpenFile(t.Filename, os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(t.Filename, os.O_WRONLY|os.O_RDONLY|os.O_CREATE, 0666)
 
 	if err != nil {
 		// exit by error
 		defer t.waitGroup.Done()
-		log.Println("Error on open file", err, t.Filename)
+		log.Printf("%s: can not open file %v\n", t.Filename, err)
 		t.lastError = err
 		s.transferChan <- t
 		return
@@ -86,16 +86,57 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 	defer file.Close()
 	defer t.waitGroup.Done()
 
-	if atp != nil {
-		// restore state
-	}
-
-	// fix it with restore state
 	piecesCount, _ := proto.NumPiecesAndBlocks(t.Size)
 	hashes := proto.HashSet{Hash: t.Hash, PieceHashes: make([]proto.ED2KHash, 0)}
 	downloadedBlocks := make(map[int]*proto.BitField)
 	localFilename := proto.ByteContainer(t.Filename)
 	pieces := proto.CreateBitField(piecesCount)
+
+	if atp != nil {
+		// restore state
+		hashes = atp.Hashes // can be empty
+		pieces = atp.Pieces // must contain
+		for pieceIndex, x := range atp.DownloadedBlocks {
+			rp, ok := t.incomingPieces[pieceIndex]
+			if !ok {
+				rp = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
+				t.incomingPieces[pieceIndex] = rp
+			}
+
+			for b := 0; b < x.Bits(); b++ {
+				if x.GetBit(b) {
+					pb := proto.PieceBlock{PieceIndex: pieceIndex, BlockIndex: b}
+					pbSize := Min(t.Size-pb.Start(), proto.BLOCK_SIZE_UINT64)
+					pendingBlock := PendingBlock{block: pb, data: make([]byte, pbSize)}
+					_, err := file.Seek(int64(pb.Start()), 0)
+					if err != nil {
+						log.Printf("%s: can no seek to %v position in file with error %v\n", t.Filename, pb.Start(), err)
+						// report transfer can not be restored
+					} else {
+						n, err := file.Read(pendingBlock.data)
+						if err != nil || n != len(pendingBlock.data) {
+							log.Printf("%s: can not read block [%d.%d] size %d with error: %v\n", t.Filename, pb.PieceIndex, pb.BlockIndex, len(pendingBlock.data), err)
+							// report transfer can not restore
+						} else {
+							rp.InsertBlock(&pendingBlock)
+							log.Printf("%s: block [%d.%d] data size: %d was restored\n", t.Filename, pb.PieceIndex, pb.BlockIndex, len(pendingBlock.data))
+						}
+					}
+				}
+			}
+		}
+	} else {
+		// create initial add transfer parameters here
+		s.transferResumeData <- proto.AddTransferParameters{
+			Hashes:           hashes,
+			Filename:         localFilename,
+			Filesize:         t.Size,
+			Pieces:           pieces,
+			DownloadedBlocks: downloadedBlocks,
+		}
+	}
+
+	// report transfer is ready to operate
 
 	execute := true
 	log.Println("Transfer cycle in running")
@@ -194,7 +235,7 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 				if t.incomingPieces[x.PieceIndex] == nil {
 					t.incomingPieces[x.PieceIndex] = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
 				}
-				pb := CreatePendingBlock(x, peerConnection.transfer.Size)
+				pb := MakePendingBlock(x, peerConnection.transfer.Size)
 				peerConnection.requestedBlocks = append(peerConnection.requestedBlocks, &pb)
 				req.BeginOffset[i] = pb.region.Begin()
 				req.EndOffset[i] = pb.region.Segments[0].End

@@ -26,7 +26,7 @@ func Min(a uint64, b uint64) uint64 {
 	return b
 }
 
-func CreatePendingBlock(b proto.PieceBlock, size uint64) PendingBlock {
+func MakePendingBlock(b proto.PieceBlock, size uint64) PendingBlock {
 	begin := b.Start()
 	end := Min(b.Start()+uint64(proto.BLOCK_SIZE), size)
 	return PendingBlock{block: b, region: data.MakeRegion(data.Range{Begin: begin, End: end}), data: make([]byte, end-begin)}
