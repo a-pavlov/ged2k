@@ -42,7 +42,7 @@ func NewTransfer(hash proto.ED2KHash, filename string, size uint64) *Transfer {
 		sourcesChan:    make(chan proto.FoundFileSources),
 		peerConnChan:   make(chan *PeerConnection),
 		hashSetChan:    make(chan *proto.HashSet),
-		piecePicker:    CreatePiecePicker(proto.NumPiecesAndBlocks(size)),
+		piecePicker:    NewPiecePicker(proto.NumPiecesAndBlocks(size)),
 		incomingPieces: make(map[int]*ReceivingPiece),
 	}
 }

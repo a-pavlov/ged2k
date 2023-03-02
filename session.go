@@ -38,7 +38,7 @@ type Session struct {
 	stat     Statistics
 }
 
-func CreateSession(config Config) *Session {
+func NewSession(config Config) *Session {
 	log.Println("Create session")
 	return &Session{
 		configuration:              config,

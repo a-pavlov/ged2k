@@ -21,7 +21,7 @@ func main() {
 	log.Println("GED2K has been started")
 	reader := bufio.NewReader(os.Stdin)
 	cfg := Config{UserAgent: proto.EMULE, ListenPort: 4888, Name: "TestGed2k", MaxConnections: 100, ModName: "jed2k", ClientName: "jed2k", AppVersion: 0x3c}
-	s := CreateSession(cfg)
+	s := NewSession(cfg)
 	s.Start()
 
 L:
