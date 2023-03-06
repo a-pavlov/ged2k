@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/a-pavlov/ged2k/proto"
+	"log"
 	"sync"
 )
 
@@ -125,6 +126,7 @@ func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer *Peer) []proto.P
 func (pp *PiecePicker) AbortBlock(block proto.PieceBlock, peer *Peer) bool {
 	pp.mutex.Lock()
 	defer pp.mutex.Unlock()
+	log.Printf("Abort block, piece index %d block index %d\n", block.PieceIndex, block.BlockIndex)
 	dp := pp.getDownloadingPiece(block.PieceIndex)
 	if dp != nil {
 		dp.AbortBlock(block.PieceIndex, peer)

@@ -116,3 +116,32 @@ func Test_AddTransferParameters(t *testing.T) {
 		t.Error("Wrong bits on getting")
 	}
 }
+
+func Test_PieceBlockCalc(t *testing.T) {
+	b1 := FromOffset(0)
+	if b1.PieceIndex != 0 || b1.BlockIndex != 0 {
+		t.Errorf("Block incorrect [%d:%d]\n", b1.PieceIndex, b1.BlockIndex)
+	}
+
+	b2 := FromOffset(194560)
+	if b2.PieceIndex != 0 || b2.BlockIndex != 1 {
+		t.Errorf("Block incorrect [%d:%d]\n", b2.PieceIndex, b2.BlockIndex)
+	}
+}
+
+func Test_InBlockOffset(t *testing.T) {
+	o1 := InBlockOffset(0)
+	if o1 != 0 {
+		t.Errorf("In block offset incorrect: %v", o1)
+	}
+
+	o2 := InBlockOffset(194560)
+	if o2 != 0 {
+		t.Errorf("In block offset incorrect: %v", o2)
+	}
+
+	o3 := InBlockOffset(389120)
+	if o3 != 0 {
+		t.Errorf("In block offset incorrect: %v", o3)
+	}
+}

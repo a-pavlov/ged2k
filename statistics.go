@@ -2,7 +2,6 @@ package main
 
 import "C"
 import (
-	"sync"
 	"time"
 )
 
@@ -11,7 +10,6 @@ type StatChannel struct {
 	totalCounter  int
 	average5Sec   int
 	average30Sec  int
-	samples       []int
 }
 
 func (sc *StatChannel) Add(count int) {
@@ -35,38 +33,33 @@ func (sc *StatChannel) AddChannel(s StatChannel) *StatChannel {
 
 func (sc *StatChannel) calc(duration time.Duration) {
 	sample := (sc.secondCounter * 1000) / int(duration.Milliseconds())
-	sc.samples = append(sc.samples, sample)
-	if len(sc.samples) > 5 {
-		sc.samples = sc.samples[1:]
-	}
-	sum := 0
-	for _, x := range sc.samples {
-		sum += x
-	}
-
-	sc.average5Sec = sum / 5
-	//m_5_sec_average = size_type(m_5_sec_average) * 4 / 5 + sample / 5;
+	sc.average5Sec = sc.average5Sec*4/5 + sample/5
 	sc.average30Sec = sc.average30Sec*29/30 + sample/30
 	sc.secondCounter = 0
 }
 
-const CH_UPLOAD_PAYLOAD int = 0
-const CH_UPLOAD_PROTOCOL int = 1
-const CH_DOWNLOAD_PAYLOAD int = 2
-const CH_DOWNLOAD_PROTOCOL int = 3
+const (
+	CH_UPLOAD = iota
+	CH_DOWNLOAD
+)
 
 type Statistics struct {
-	mutex    sync.Mutex
-	channels []StatChannel
+	channels []*StatChannel
 }
 
-func (s *Statistics) Add(stat *Statistics) {
-	s.mutex.Lock()
-	s.mutex.Unlock()
-	for i := range stat.channels {
-		s.channels[i].AddChannel(stat.channels[i])
-	}
+func NewStatistics() *Statistics {
+	return &Statistics{channels: []*StatChannel{{}, {}}}
 }
+
+func MakeStatistics() Statistics {
+	return Statistics{channels: []*StatChannel{{}, {}}}
+}
+
+//func (s *Statistics) Add(stat Statistics) {
+//for i := 0; i < len(s.channels); i++ {
+//		s.channels[i].AddChannel(*stat.channels[i])
+//}
+//}
 
 func (s *Statistics) SecondTick(duration time.Duration) {
 	for _, x := range s.channels {
@@ -74,28 +67,26 @@ func (s *Statistics) SecondTick(duration time.Duration) {
 	}
 }
 
-func (s *Statistics) ReceiveBytes(protocolBytes int, payloadBytes int) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.channels[CH_DOWNLOAD_PROTOCOL].Add(protocolBytes)
-	s.channels[CH_DOWNLOAD_PAYLOAD].Add(payloadBytes)
+func (s *Statistics) ReceiveBytes(bytes int) {
+	s.channels[CH_DOWNLOAD].Add(bytes)
 }
 
-func (s *Statistics) SendBytes(protocolBytes int, payloadBytes int) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.channels[CH_UPLOAD_PROTOCOL].Add(protocolBytes)
-	s.channels[CH_UPLOAD_PAYLOAD].Add(payloadBytes)
+func (s *Statistics) SendBytes(bytes int) {
+	s.channels[CH_UPLOAD].Add(bytes)
 }
 
 func (s *Statistics) DownloadRate() int {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.channels[CH_DOWNLOAD_PAYLOAD].Rate() + s.channels[CH_DOWNLOAD_PROTOCOL].Rate()
+	return s.channels[CH_DOWNLOAD].Rate()
 }
 
 func (s *Statistics) UploadRate() int {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.channels[CH_UPLOAD_PAYLOAD].Rate() + s.channels[CH_UPLOAD_PROTOCOL].Rate()
+	return s.channels[CH_UPLOAD].Rate()
+}
+
+func (s *Statistics) DownloadLowPassRate() int {
+	return s.channels[CH_DOWNLOAD].LowPassRate()
+}
+
+func (s *Statistics) UploadLowPassRate() int {
+	return s.channels[CH_UPLOAD].LowPassRate()
 }

@@ -28,14 +28,18 @@ type Session struct {
 
 	// peer connection
 	registerPeerConnection   chan *PeerConnection
-	unregisterPeerConnection chan *PeerConnection
+	unregisterPeerConnection chan PeerConnectionPacket
 
 	//transfer
 	transferChan       chan *Transfer
 	transferResumeData chan proto.AddTransferParameters
 
+	statistics      Statistics
+	statReceiveChan chan StatPacket
+	statSendChan    chan StatPacket
+
 	ClientId uint32
-	stat     Statistics
+	Stat     Statistics
 }
 
 func NewSession(config Config) *Session {
@@ -48,15 +52,18 @@ func NewSession(config Config) *Session {
 		registerServerConnection:   make(chan *ServerConnection),
 		unregisterServerConnection: make(chan *ServerConnection),
 		registerPeerConnection:     make(chan *PeerConnection),
-		unregisterPeerConnection:   make(chan *PeerConnection),
+		unregisterPeerConnection:   make(chan PeerConnectionPacket),
 		transfers:                  make(map[proto.ED2KHash]*Transfer),
 		transferChan:               make(chan *Transfer),
 		transferResumeData:         make(chan proto.AddTransferParameters),
+		statReceiveChan:            make(chan StatPacket),
+		statSendChan:               make(chan StatPacket),
+		Stat:                       MakeStatistics(),
 	}
 }
 
 func (s *Session) Tick() {
-	tick := time.Tick(5000 * time.Millisecond)
+	tick := time.Tick(1000 * time.Millisecond)
 	execute := true
 	s.wg.Add(1)
 	defer s.wg.Done()
@@ -163,7 +170,7 @@ func (s *Session) Tick() {
 						}
 					}
 				case "peer":
-					pc := PeerConnection{address: elems[1]}
+					pc := PeerConnection{Address: elems[1]}
 					s.peerConnections = append(s.peerConnections, &pc)
 					go pc.Start(s)
 				case "load":
@@ -192,6 +199,8 @@ func (s *Session) Tick() {
 						log.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
 						tran := NewTransfer(hash, filename, size)
 						s.transfers[hash] = tran
+						tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S', Connectable: true})
+						log.Println("Added peer to transfer")
 						go tran.Start(s, nil)
 					} else {
 						log.Println("Error on transfer adding", err)
@@ -223,12 +232,24 @@ func (s *Session) Tick() {
 					}
 				}
 			}
+		case statPacket := <-s.statReceiveChan:
+			statPacket.Connection.Stat.ReceiveBytes(statPacket.Counter)
+			s.Stat.ReceiveBytes(statPacket.Counter)
+			if statPacket.Connection.transfer != nil {
+				statPacket.Connection.transfer.Stat.ReceiveBytes(statPacket.Counter)
+			}
+		case statPacket := <-s.statSendChan:
+			statPacket.Connection.Stat.SendBytes(statPacket.Counter)
+			s.Stat.SendBytes(statPacket.Counter)
+			if statPacket.Connection.transfer != nil {
+				statPacket.Connection.transfer.Stat.SendBytes(statPacket.Counter)
+			}
 		case <-tick:
 			log.Println("Tick")
-			for i, x := range s.transfers {
-				x.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S', Connectable: true})
-				log.Println("Add peer to", i)
-			}
+			//for i, x := range s.transfers {
+			//	x.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S', Connectable: true})
+			//	log.Println("Add peer to", i)
+			//}
 			currentTime := time.Now()
 			if s.serverConnection != nil {
 				if !serverLastReq.IsZero() && currentTime.Sub(serverLastReq).Seconds() > 5 {
@@ -256,10 +277,10 @@ func (s *Session) Tick() {
 								if peerConnection == nil {
 									candidate.LastConnected = currentTime
 									candidate.NextConnection = time.Time{}
-									peerConnection := PeerConnection{address: candidate.endpoint.AsString(), transfer: t, peer: candidate}
-									s.peerConnections = append(s.peerConnections, &peerConnection)
-									t.connections = append(t.connections, &peerConnection)
-									candidate.peerConnection = &peerConnection
+									peerConnection := NewPeerConnection(candidate.endpoint.AsString(), t, candidate)
+									s.peerConnections = append(s.peerConnections, peerConnection)
+									t.connections = append(t.connections, peerConnection)
+									candidate.peerConnection = peerConnection
 									connectionsReserve--
 									stepsSinceLastConnect = 0
 									go peerConnection.Start(s)
@@ -292,10 +313,13 @@ func (s *Session) Tick() {
 			}
 
 			// tick to collect statistics
+			dur := currentTime.Sub(lastTick)
+			for _, x := range s.peerConnections {
+				x.Stat.SecondTick(dur)
+			}
+			s.Stat.SecondTick(dur)
 			for _, x := range s.transfers {
-				if !lastTick.IsZero() {
-					x.SecondTick(currentTime.Sub(lastTick), s)
-				}
+				x.Stat.SecondTick(dur)
 			}
 
 			lastTick = currentTime
@@ -307,30 +331,30 @@ func (s *Session) Tick() {
 				// policy - newConnection
 				//peerConnection.transfer.
 			}
-		case peerConnection := <-s.unregisterPeerConnection:
-			s.peerConnections = removePeerConnection(peerConnection, s.peerConnections)
-			if peerConnection.transfer != nil {
-				peerConnection.transfer.connections = removePeerConnection(peerConnection, peerConnection.transfer.connections)
+		case peerConnectionPacket := <-s.unregisterPeerConnection:
+			s.peerConnections = removePeerConnection(peerConnectionPacket.Connection, s.peerConnections)
+			if peerConnectionPacket.Connection.transfer != nil {
+				peerConnectionPacket.Connection.transfer.connections = removePeerConnection(peerConnectionPacket.Connection, peerConnectionPacket.Connection.transfer.connections)
 				// abort all blocks we have requested for now
-				for _, x := range peerConnection.requestedBlocks {
-					peerConnection.transfer.piecePicker.AbortBlock(x.block, peerConnection.peer)
+				for _, x := range peerConnectionPacket.Connection.requestedBlocks {
+					peerConnectionPacket.Connection.transfer.piecePicker.AbortBlock(x.block, peerConnectionPacket.Connection.peer)
 				}
 			}
 
-			if peerConnection.peer != nil {
-				peerConnection.peer.peerConnection = nil
-				peerConnection.peer.LastConnected = time.Now()
+			if peerConnectionPacket.Connection.peer != nil {
+				peerConnectionPacket.Connection.peer.peerConnection = nil
+				peerConnectionPacket.Connection.peer.LastConnected = time.Now()
 				// check error somehow
-				if !peerConnection.closedByRequest && peerConnection.lastError != nil {
-					peerConnection.peer.FailCount += 1
+				if !peerConnectionPacket.Connection.closedByRequest && peerConnectionPacket.Error != nil {
+					peerConnectionPacket.Connection.peer.FailCount += 1
 				}
 			}
 
-			peerConnection.transfer = nil
-			peerConnection.peer = nil
+			peerConnectionPacket.Connection.transfer = nil
+			peerConnectionPacket.Connection.peer = nil
 		case transfer := <-s.transferChan:
 			for _, x := range transfer.connections {
-				x.Close()
+				go x.Close(true)
 			}
 			transfer.connections = transfer.connections[:0]
 		case atp := <-s.transferResumeData:
@@ -362,7 +386,7 @@ func (s *Session) Stop() {
 
 	// close all peer connections
 	for _, x := range s.peerConnections {
-		x.Close()
+		x.Close(true)
 	}
 
 	close(s.comm)

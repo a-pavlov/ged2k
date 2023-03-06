@@ -16,10 +16,6 @@ const PEER_SRC_SERVER byte = 0x2
 const PEER_SRC_DHT byte = 0x4
 const PEER_SRC_RESUME_DATA byte = 0x8
 
-const PEER_SPEED_SLOW int = 0
-const PEER_SPEED_MEDIUM int = 1
-const PEER_SPEED_FAST int = 2
-
 type Peer struct {
 	SourceFlag     byte
 	LastConnected  time.Time

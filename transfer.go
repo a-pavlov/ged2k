@@ -30,6 +30,7 @@ type Transfer struct {
 	incomingPieces map[int]*ReceivingPiece
 	//addTransferParameters proto.AddTransferParameters
 	lastError error
+	Stat      Statistics
 }
 
 func NewTransfer(hash proto.ED2KHash, filename string, size uint64) *Transfer {
@@ -44,6 +45,7 @@ func NewTransfer(hash proto.ED2KHash, filename string, size uint64) *Transfer {
 		hashSetChan:    make(chan *proto.HashSet),
 		piecePicker:    NewPiecePicker(proto.NumPiecesAndBlocks(size)),
 		incomingPieces: make(map[int]*ReceivingPiece),
+		Stat:           MakeStatistics(),
 	}
 }
 
@@ -243,10 +245,10 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 
 			if len(blocks) > 0 {
-				go peerConnection.SendPacket(proto.OP_EMULEPROT, proto.OP_REQUESTPARTS_I64, &req)
+				go peerConnection.SendPacket(s, proto.OP_EMULEPROT, proto.OP_REQUESTPARTS_I64, &req)
 			} else {
 				log.Println("No more blocks for peer connection")
-				peerConnection.Close()
+				go peerConnection.Close(true)
 			}
 		}
 	}
@@ -309,7 +311,7 @@ E:
 	for execute {
 		select {
 		case peerConn := <-peerConnectionClosedChan:
-			t.policy.PeerConnectionClosed(peerConn, peerConn.lastError)
+			t.policy.PeerConnectionClosed(peerConn, peerConn.LastError)
 			t.session.ClosePeerConnection(peerConn.endpoint)
 		case _, ok := <-t.sourcesChan:
 			if ok {
@@ -349,15 +351,6 @@ E:
 
 func (t *Transfer) IsFinished() bool {
 	return t.piecePicker.NumHave() == t.piecePicker.PiecesCount()
-}
-
-func (t *Transfer) SecondTick(duration time.Duration, s *Session) {
-	for _, x := range t.connections {
-		t.stat.Add(&x.stat)
-	}
-
-	s.stat.Add(&t.stat)
-	t.stat.SecondTick(duration)
 }
 
 func (t *Transfer) ConnectOnePeer(time time.Time, s *Session) {

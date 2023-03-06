@@ -37,3 +37,16 @@ func Test_PendingBlock(t *testing.T) {
 		t.Errorf("Pending block create error: %v", len(pb2.data))
 	}
 }
+
+func Test_RemovePB(t *testing.T) {
+	pbs := []*PendingBlock{{block: proto.PieceBlock{PieceIndex: 0, BlockIndex: 0}}, {block: proto.PieceBlock{PieceIndex: 0, BlockIndex: 1}}}
+	pbs1 := RemovePendingBlock(pbs, 0)
+	if len(pbs1) != 1 || pbs1[0].block.PieceIndex != 0 || pbs1[0].block.BlockIndex != 1 {
+		t.Errorf("Remove by index error 1 or incorrect item")
+	}
+
+	pbs2 := RemovePendingBlock(pbs1, 0)
+	if len(pbs2) != 0 {
+		t.Errorf("Remove by index error 2")
+	}
+}
