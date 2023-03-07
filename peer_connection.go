@@ -91,8 +91,8 @@ type PeerConnection struct {
 	closedByRequest bool
 }
 
-func NewPeerConnection(address string, transfer *Transfer, peer *Peer) *PeerConnection {
-	return &PeerConnection{Address: address, transfer: transfer, peer: peer, Stat: MakeStatistics(), requestedBlocks: make([]*PendingBlock, 0)}
+func NewPeerConnection(address string, transfer *Transfer, p *Peer) *PeerConnection {
+	return &PeerConnection{Address: address, transfer: transfer, peer: p, Stat: MakeStatistics(), requestedBlocks: make([]*PendingBlock, 0)}
 }
 
 func (peerConnection *PeerConnection) Start(s *Session) {

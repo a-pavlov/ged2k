@@ -153,17 +153,19 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 		case pb := <-t.dataChan:
 			rp, ok := t.incomingPieces[pb.block.PieceIndex]
 			if !ok {
+				log.Printf("piece %d was already removed on received block %d\n", pb.block.PieceIndex, pb.block.BlockIndex)
 				// incoming block was already received and the piece has been removed from incoming order
 				break
 			}
 
 			if !rp.InsertBlock(pb) {
+				log.Printf("piece %d already has block %d\n", pb.block.PieceIndex, pb.block.BlockIndex)
 				// incoming block has been already inserted to the piece
 				break
 			}
 
 			// write block to the file in advance
-			_, e := file.Seek(int64(rp.blocks[0].block.Start()), 0)
+			_, e := file.Seek(int64(pb.block.Start()), 0)
 			if e == nil {
 				file.Write(pb.data)
 				file.Sync()
