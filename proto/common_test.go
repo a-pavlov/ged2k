@@ -710,5 +710,24 @@ func Test_PacketCombiner(t *testing.T) {
 			}
 		}
 	}
+}
 
+func TestEndpoint_IsLocalAddress(t *testing.T) {
+	endpoints := make([]Endpoint, 6)
+	errs := make([]error, 6)
+	expected := []bool{true, true, true, true, true, false}
+
+	endpoints[0], errs[0] = FromString("10.0.0.3:4444")
+	endpoints[1], errs[1] = FromString("172.16.22.33:5555")
+	endpoints[2], errs[2] = FromString("192.168.1.1:5567")
+	endpoints[3], errs[3] = FromString("169.254.2.2:1112")
+	endpoints[4], errs[4] = FromString("127.1.1.45:5678")
+	endpoints[5], errs[5] = FromString("217.115.10.22:2222")
+	for i, x := range endpoints {
+		if errs[i] != nil {
+			t.Errorf("Failed to parse on index %d with %v", i, errs[i])
+		} else if x.IsLocalAddress() != expected[i] {
+			t.Errorf("Index %d failed", i)
+		}
+	}
 }

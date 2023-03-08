@@ -199,7 +199,7 @@ func (s *Session) Tick() {
 						log.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
 						tran := NewTransfer(hash, filename, size)
 						s.transfers[hash] = tran
-						tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S', Connectable: true})
+						tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S'})
 						log.Println("Added peer to transfer")
 						go tran.Start(s, nil)
 					} else {
@@ -276,7 +276,6 @@ func (s *Session) Tick() {
 								peerConnection := s.GetPeerConnectionByEndpoint(candidate.endpoint)
 								if peerConnection == nil {
 									candidate.LastConnected = currentTime
-									candidate.NextConnection = time.Time{}
 									peerConnection := NewPeerConnection(candidate.endpoint.AsString(), t, candidate)
 									s.peerConnections = append(s.peerConnections, peerConnection)
 									t.connections = append(t.connections, peerConnection)
@@ -285,8 +284,8 @@ func (s *Session) Tick() {
 									stepsSinceLastConnect = 0
 									go peerConnection.Start(s)
 								} else {
-									// peer connection on this endpoint already connected
-									// update next time
+									// move next connection on peer to the future to avoid returning it as candidate
+									candidate.NextConnection = currentTime.Add(time.Second * time.Duration(15))
 								}
 							}
 							// transfer policy find connect candidate

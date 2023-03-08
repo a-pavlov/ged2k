@@ -1,7 +1,7 @@
 package main
 
 import (
-	"math/rand"
+	"log"
 	"time"
 
 	"github.com/a-pavlov/ged2k/proto"
@@ -9,7 +9,8 @@ import (
 
 const MAX_PEER_LIST_SIZE int = 100
 const MIN_RECONNECT_TIMEOUT_SEC = 10
-const MAX_ITERATIONS = 50
+
+//const MAX_ITERATIONS = 50
 
 const PEER_SRC_INCOMING byte = 0x1
 const PEER_SRC_SERVER byte = 0x2
@@ -21,7 +22,6 @@ type Peer struct {
 	LastConnected  time.Time
 	NextConnection time.Time
 	FailCount      int
-	Connectable    bool
 	peerConnection *PeerConnection
 	endpoint       proto.Endpoint
 	Speed          int
@@ -33,7 +33,7 @@ func (p Peer) IsEmpty() bool {
 }
 
 func (p *Peer) IsConnectCandidate() bool {
-	return !(p.peerConnection != nil || !p.Connectable || p.FailCount > 10)
+	return !(p.peerConnection != nil || p.FailCount > 5)
 }
 
 func (p *Peer) IsEraseCandidate() bool {
@@ -69,8 +69,7 @@ func (p *Peer) SourceRank() int {
 	return ret
 }
 
-// true if left better to erase than right
-func ComparePeerErase(l *Peer, r *Peer) bool {
+func LeftBetterRightToRemove(l *Peer, r *Peer) bool {
 	if l.FailCount != r.FailCount {
 		return l.FailCount > r.FailCount
 	}
@@ -83,118 +82,83 @@ func ComparePeerErase(l *Peer, r *Peer) bool {
 		return lResumeDataSource
 	}
 
-	if l.Connectable != r.Connectable {
-		return !l.Connectable
-	}
-
 	return false
 }
 
 type Policy struct {
-	roundRobin int
-	peers      []*Peer
-	transfer   *Transfer
+	peers    map[proto.Endpoint]*Peer
+	maxPeers int
+}
+
+func NewPolicy(mp int) *Policy {
+	return &Policy{peers: make(map[proto.Endpoint]*Peer), maxPeers: mp}
+}
+
+func MakePolicy(mp int) Policy {
+	return Policy{peers: make(map[proto.Endpoint]*Peer), maxPeers: mp}
 }
 
 func (policy *Policy) AddPeer(p *Peer) bool {
-	if len(policy.peers) >= MAX_PEER_LIST_SIZE {
+	if len(policy.peers) >= policy.maxPeers {
 		if !policy.erasePeers() {
 			return false
 		}
 	}
 
-	indx := policy.GetPeerIndexByEndpoint(p.endpoint)
-	if indx != -1 {
-		policy.peers[indx].SourceFlag |= p.SourceFlag
+	oldPeer, ok := policy.peers[p.endpoint]
+	if ok {
+		oldPeer.SourceFlag |= p.SourceFlag
 		return false
 	}
 
-	policy.peers = append(policy.peers, p)
+	policy.peers[p.endpoint] = p
 	return true
 }
 
-func (policy *Policy) GetPeerIndexByEndpoint(ep proto.Endpoint) int {
-	for i, x := range policy.peers {
-		if x.endpoint == ep {
-			return i
-		}
-	}
-
-	return -1
-}
-
-// costly
-func removePeer(s []*Peer, i int) []*Peer {
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
-}
-
 func (policy *Policy) erasePeers() bool {
-
 	count := len(policy.peers)
 
 	if count == 0 {
 		return false
 	}
 
-	eraseCandidate := -1
-
-	roundRobin := rand.Intn(len(policy.peers))
-
-	lowWatermark := MAX_PEER_LIST_SIZE * 95 / 100
-	if lowWatermark == MAX_PEER_LIST_SIZE {
+	lowWatermark := policy.maxPeers * 95 / 100
+	if lowWatermark == policy.maxPeers {
 		lowWatermark--
 	}
 
-	for iterations := proto.Min(len(policy.peers), MAX_ITERATIONS); iterations > 0; iterations-- {
+	eraseCandidate := proto.Endpoint{}
+
+	for endpoint, peer := range policy.peers {
 		if len(policy.peers) < lowWatermark {
 			break
 		}
 
-		if roundRobin == len(policy.peers) {
-			roundRobin = 0
+		if peer.IsEraseCandidate() && (eraseCandidate.IsEmpty() || !LeftBetterRightToRemove(policy.peers[eraseCandidate], peer)) {
+			eraseCandidate = endpoint
 		}
-
-		p := policy.peers[roundRobin]
-		current := roundRobin
-
-		// check p is erase candidate or we already have erase candidate and it not better than pe for erase
-		if p.IsEraseCandidate() && (eraseCandidate == -1 || !ComparePeerErase(policy.peers[eraseCandidate], p)) {
-			if p.ShouldEraseImmediately() {
-				if eraseCandidate > current {
-					eraseCandidate--
-				}
-
-				policy.peers = removePeer(policy.peers, current)
-			} else {
-				eraseCandidate = current
-			}
-		}
-
-		roundRobin++
 	}
 
-	if eraseCandidate > -1 {
-		policy.peers = removePeer(policy.peers, eraseCandidate)
+	if !eraseCandidate.IsEmpty() {
+		delete(policy.peers, eraseCandidate)
 	}
 
 	return count != len(policy.peers)
 }
 
 func (policy *Policy) newConnection(connection *PeerConnection) bool {
-	indx := policy.GetPeerIndexByEndpoint(connection.peer.endpoint)
-	if indx != -1 {
-
-		p := policy.peers[indx]
-		if p.peerConnection != nil {
+	peer, ok := policy.peers[connection.endpoint]
+	if ok {
+		if peer.peerConnection != nil {
+			log.Printf("peer %s already has peer connection\n", peer.endpoint.AsString())
 			return false
 		}
 
-		p.peerConnection = connection
+		peer.peerConnection = connection
 		return true
 	}
 
-	p := Peer{endpoint: connection.peer.endpoint, peerConnection: connection}
+	p := Peer{endpoint: connection.endpoint, peerConnection: connection, SourceFlag: PEER_SRC_INCOMING}
 	return policy.AddPeer(&p)
 }
 
@@ -204,18 +168,18 @@ func (policy *Policy) newConnection(connection *PeerConnection) bool {
  * @param rhs
  * @return true if lhs better connect candidate than rhs
  */
-func comparePeers(l *Peer, r *Peer) bool {
+func LeftBetterRightToConnect(l *Peer, r *Peer) bool {
 	// prefer peers with lower failcount
 	if l.FailCount != r.FailCount {
 		return l.FailCount < r.FailCount
 	}
 
 	// Local peers should always be tried first
-	//boolean lhsLocal = Utils.isLocalAddress(lhs.getEndpoint());
-	//boolean rhsLocal = Utils.isLocalAddress(rhs.getEndpoint());
-	//if (lhsLocal != rhsLocal) {
-	//    return lhsLocal;
-	//}
+	lhsLocal := l.endpoint.IsLocalAddress()
+	rhsLocal := r.endpoint.IsLocalAddress()
+	if lhsLocal != rhsLocal {
+		return lhsLocal
+	}
 
 	if l.LastConnected != r.LastConnected {
 		return l.LastConnected.Before(r.LastConnected)
@@ -243,100 +207,41 @@ func (policy *Policy) NumConnectCandidates() int {
 }
 
 func (policy *Policy) FindConnectCandidate(t time.Time) *Peer {
-	candidate := -1
-	eraseCandidate := -1
-	if policy.roundRobin >= len(policy.peers) {
-		policy.roundRobin = 0
-	}
+	candidate := proto.Endpoint{}
 
-	for iteration := 0; iteration < proto.Min(len(policy.peers), MAX_ITERATIONS); iteration++ {
-		if policy.roundRobin >= len(policy.peers) {
-			policy.roundRobin = 0
-		}
-
-		p := policy.peers[policy.roundRobin]
-		current := policy.roundRobin
-
-		if len(policy.peers) > MAX_PEER_LIST_SIZE {
-			if p.IsEraseCandidate() && (eraseCandidate == -1 || !ComparePeerErase(policy.peers[eraseCandidate], p)) {
-				if p.ShouldEraseImmediately() {
-					if eraseCandidate > current {
-						eraseCandidate--
-					}
-
-					if candidate > current {
-						candidate--
-					}
-
-					policy.peers = removePeer(policy.peers, current)
-					continue
-				} else {
-					eraseCandidate = current
-				}
-			}
-		}
-
-		policy.roundRobin++
-		if !p.IsConnectCandidate() {
+	for endpoint, peer := range policy.peers {
+		if !peer.IsConnectCandidate() {
 			continue
 		}
 
-		if candidate != -1 && comparePeers(policy.peers[candidate], p) {
-			continue
-		}
-
-		if !p.NextConnection.IsZero() && p.NextConnection.Before(t) {
+		if !candidate.IsEmpty() && LeftBetterRightToConnect(policy.peers[candidate], peer) {
 			continue
 		}
 
 		// 10 seconds timeout for each fail
-		if !p.LastConnected.IsZero() && t.Before(p.LastConnected.Add(time.Second*time.Duration(p.FailCount*MIN_RECONNECT_TIMEOUT_SEC))) {
+		if !peer.LastConnected.IsZero() && t.Before(peer.LastConnected.Add(time.Second*time.Duration(peer.FailCount*MIN_RECONNECT_TIMEOUT_SEC))) {
 			continue
 		}
-		candidate = current
-	}
 
-	if eraseCandidate != -1 {
-		if candidate > eraseCandidate {
-			candidate--
+		if !peer.NextConnection.IsZero() && t.Before(peer.NextConnection) {
+			continue
 		}
 
-		policy.peers = removePeer(policy.peers, eraseCandidate)
+		candidate = endpoint
 	}
 
-	if candidate == -1 {
-		return nil
-	}
-
-	x := time.Now().Add(time.Second * time.Duration(5))
-	policy.peers[candidate].NextConnection = x
 	return policy.peers[candidate]
 }
 
-func (policy *Policy) PeerConnectionClosed(peerConnection *PeerConnection, e error) {
-	for _, x := range policy.peers {
-		if x.peerConnection == peerConnection {
-			x.LastConnected = time.Now()
-			if e != nil {
-				x.FailCount = x.FailCount + 1
-			}
-			x.peerConnection = nil
-			break
-		}
-	}
-}
-
-func (policy *Policy) NewConnection(peerConnection *PeerConnection) {
-	for _, x := range policy.peers {
-		if x.endpoint == peerConnection.endpoint {
-			if x.peerConnection == nil {
-				peerConnection.peer = x
-				x.peerConnection = peerConnection
-				return
+func (policy *Policy) PeerConnectionClosed(peerConnection *PeerConnection, err error) {
+	if peerConnection.peer != nil {
+		p, ok := policy.peers[peerConnection.endpoint]
+		if ok {
+			p.LastConnected = time.Now()
+			p.peerConnection = nil
+			if err != nil {
+				p.FailCount += 1
 			}
 		}
 	}
-
-	peer := Peer{endpoint: peerConnection.endpoint, peerConnection: peerConnection}
-	policy.AddPeer(&peer)
 }

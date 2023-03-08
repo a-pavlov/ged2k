@@ -377,6 +377,18 @@ func (i Endpoint) Size() int {
 	return DataSize(i.Ip) + DataSize(i.Port)
 }
 
+func (ep Endpoint) IsEmpty() bool {
+	return ep.Ip == 0 && ep.Port == 0
+}
+
+func (ep Endpoint) IsLocalAddress() bool {
+	return (ep.Ip&0x0000ff) == 0x0000000a || // 10.x.x.x
+		(ep.Ip&0x0000f0ff) == 0x000010ac || // 172.16.x.x
+		(ep.Ip&0x0000ffff) == 0x0000a8c0 || // 192.168.x.x
+		(ep.Ip&0x0000ffff) == 0x0000fea9 || // 169.254.x.x
+		(ep.Ip&0x000000ff) == 0x0000007f // 127.x.x.x
+}
+
 type IP uint32
 
 func (ip *IP) Get(sb *StateBuffer) *StateBuffer {
