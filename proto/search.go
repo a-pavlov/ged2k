@@ -500,13 +500,13 @@ func (sm SearchMore) Size() int {
 }
 
 type GetFileSources struct {
-	H       ED2KHash
+	Hash    ED2KHash
 	LowPart uint32
 	HiPart  uint32
 }
 
 func (gfs GetFileSources) Put(sb *StateBuffer) *StateBuffer {
-	return sb.Write(gfs.H).Write(gfs.LowPart).Write(gfs.HiPart)
+	return sb.Write(gfs.Hash).Write(gfs.LowPart).Write(gfs.HiPart)
 }
 
 func (gfs *GetFileSources) Get(*StateBuffer) *StateBuffer {
@@ -514,7 +514,7 @@ func (gfs *GetFileSources) Get(*StateBuffer) *StateBuffer {
 }
 
 func (gfs GetFileSources) Size() int {
-	return DataSize(gfs.H) + DataSize(gfs.LowPart) + DataSize(gfs.HiPart)
+	return DataSize(gfs.Hash) + DataSize(gfs.LowPart) + DataSize(gfs.HiPart)
 }
 
 type SearchResult struct {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -10,12 +11,28 @@ import (
 	"golang.org/x/crypto/md4"
 )
 
+const (
+	TRANSFER_STATUS_READ_RESUME_DATA = iota
+	TRASNFER_STATUS_STAND_BY
+	TRANSFER_STATUS
+)
+
+type TransferError struct {
+	transfer *Transfer
+	err      error
+}
+
 type Transfer struct {
-	pause    bool
 	stopped  bool
 	Hash     proto.ED2KHash
 	Size     uint64
 	Filename string
+
+	ReadingResumeData      bool
+	Paused                 bool
+	Finished               bool
+	RequestSourcesNextTime time.Time
+	LastError              error
 
 	connections    []*PeerConnection
 	policy         Policy
@@ -26,11 +43,9 @@ type Transfer struct {
 	sourcesChan    chan proto.FoundFileSources
 	peerConnChan   chan *PeerConnection
 	hashSetChan    chan *proto.HashSet
-	stat           Statistics
 	incomingPieces map[int]*ReceivingPiece
-	//addTransferParameters proto.AddTransferParameters
-	lastError error
-	Stat      Statistics
+
+	Stat Statistics
 }
 
 func NewTransfer(hash proto.ED2KHash, filename string, size uint64) *Transfer {
@@ -61,98 +76,93 @@ func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) 
 	return res
 }
 
-func (t *Transfer) IsPaused() bool {
-	return t.pause
+func (transfer *Transfer) AttachPeer(connection *PeerConnection) {
+	transfer.policy.newConnection(connection)
+	transfer.connections = append(transfer.connections, connection)
+	connection.transfer = transfer
 }
 
-func (t *Transfer) AttachPeer(connection *PeerConnection) {
-	t.policy.newConnection(connection)
-	t.connections = append(t.connections, connection)
-	connection.transfer = t
-}
-
-func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
-	t.waitGroup.Add(1)
+func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
+	transfer.waitGroup.Add(1)
 
 	var hashSet *proto.HashSet
-	file, err := os.OpenFile(t.Filename, os.O_WRONLY|os.O_RDONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(transfer.Filename, os.O_WRONLY|os.O_RDONLY|os.O_CREATE, 0666)
 
 	if err != nil {
-		// exit by error
-		defer t.waitGroup.Done()
-		log.Printf("%s: can not open file %v\n", t.Filename, err)
-		t.lastError = err
-		s.transferChan <- t
+		defer transfer.waitGroup.Done()
+		s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("can not open file %s with error %v", transfer.Filename, err)}
 		return
 	}
 
 	defer file.Close()
-	defer t.waitGroup.Done()
+	defer transfer.waitGroup.Done()
 
-	piecesCount, _ := proto.NumPiecesAndBlocks(t.Size)
-	hashes := proto.HashSet{Hash: t.Hash, PieceHashes: make([]proto.ED2KHash, 0)}
+	piecesCount, _ := proto.NumPiecesAndBlocks(transfer.Size)
+	hashes := proto.HashSet{Hash: transfer.Hash, PieceHashes: make([]proto.ED2KHash, 0)}
 	downloadedBlocks := make(map[int]*proto.BitField)
-	localFilename := proto.ByteContainer(t.Filename)
+	localFilename := proto.ByteContainer(transfer.Filename)
 	pieces := proto.CreateBitField(piecesCount)
 
 	if atp != nil {
 		// restore state
 		hashes = atp.Hashes // can be empty
-		pieces = atp.Pieces // must contain
+		pieces = atp.Pieces // must have
 		for pieceIndex, x := range atp.DownloadedBlocks {
-			rp, ok := t.incomingPieces[pieceIndex]
+			rp, ok := transfer.incomingPieces[pieceIndex]
 			if !ok {
 				rp = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
-				t.incomingPieces[pieceIndex] = rp
+				transfer.incomingPieces[pieceIndex] = rp
 			}
 
 			for b := 0; b < x.Bits(); b++ {
 				if x.GetBit(b) {
 					pb := proto.PieceBlock{PieceIndex: pieceIndex, BlockIndex: b}
-					pbSize := Min(t.Size-pb.Start(), proto.BLOCK_SIZE_UINT64)
+					pbSize := Min(transfer.Size-pb.Start(), proto.BLOCK_SIZE_UINT64)
 					pendingBlock := PendingBlock{block: pb, data: make([]byte, pbSize)}
 					_, err := file.Seek(int64(pb.Start()), 0)
 					if err != nil {
-						log.Printf("%s: can no seek to %v position in file with error %v\n", t.Filename, pb.Start(), err)
-						// report transfer can not be restored
+						s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("seek in file %s to position %d failed %v", transfer.Filename, pb.Start(), err)}
+						return
 					} else {
 						n, err := file.Read(pendingBlock.data)
 						if err != nil || n != len(pendingBlock.data) {
-							log.Printf("%s: can not read block [%d.%d] size %d with error: %v\n", t.Filename, pb.PieceIndex, pb.BlockIndex, len(pendingBlock.data), err)
-							// report transfer can not restore
+							s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("can not read block %s from file %s with error %v", pb.ToString(), transfer.Filename, err)}
+							return
 						} else {
 							rp.InsertBlock(&pendingBlock)
-							log.Printf("%s: block [%d.%d] data size: %d was restored\n", t.Filename, pb.PieceIndex, pb.BlockIndex, len(pendingBlock.data))
+							log.Printf("%s: block %s data size: %d was restored\n", transfer.Filename, pb.ToString(), len(pendingBlock.data))
 						}
 					}
 				}
 			}
 		}
+
+		// report resume data read is finished
+		s.transferChanResumeDataRead <- transfer
 	} else {
 		// create initial add transfer parameters here
 		s.transferResumeData <- proto.AddTransferParameters{
 			Hashes:           hashes,
 			Filename:         localFilename,
-			Filesize:         t.Size,
+			Filesize:         transfer.Size,
 			Pieces:           pieces,
 			DownloadedBlocks: downloadedBlocks,
 		}
 	}
 
-	// report transfer is ready to operate
-
 	execute := true
 	log.Println("Transfer cycle in running")
 	for execute {
 		select {
-		case _, ok := <-t.cmdChan:
+		case _, ok := <-transfer.cmdChan:
 			if !ok {
 				log.Println("Transfer exit requested")
 				execute = false
 			}
-		case hashSet = <-t.hashSetChan:
-		case pb := <-t.dataChan:
-			rp, ok := t.incomingPieces[pb.block.PieceIndex]
+		case hashSet = <-transfer.hashSetChan:
+
+		case pb := <-transfer.dataChan:
+			rp, ok := transfer.incomingPieces[pb.block.PieceIndex]
 			if !ok {
 				log.Printf("piece %d was already removed on received block %d\n", pb.block.PieceIndex, pb.block.BlockIndex)
 				// incoming block was already received and the piece has been removed from incoming order
@@ -166,8 +176,8 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 
 			// write block to the file in advance
-			_, e := file.Seek(int64(pb.block.Start()), 0)
-			if e == nil {
+			_, err := file.Seek(int64(pb.block.Start()), 0)
+			if err == nil {
 				file.Write(pb.data)
 				file.Sync()
 				// need to save resume data:
@@ -181,17 +191,17 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 				s.transferResumeData <- proto.AddTransferParameters{
 					Hashes:           hashes,
 					Filename:         localFilename,
-					Filesize:         t.Size,
+					Filesize:         transfer.Size,
 					Pieces:           pieces,
 					DownloadedBlocks: downloadedBlocks,
 				}
 			} else {
-				log.Printf("File seek error: %v\n", e)
-				// raise the file error here and stop transfer
+				s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("file %s seek error %v", transfer.Filename, err)}
+				return
 			}
 
 			// piece completely downloaded
-			if len(rp.blocks) == t.piecePicker.BlocksInPiece(pb.block.PieceIndex) {
+			if len(rp.blocks) == transfer.piecePicker.BlocksInPiece(pb.block.PieceIndex) {
 				log.Println("Ready to hash")
 				// check hash here
 				if hashSet == nil {
@@ -212,33 +222,32 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 				s.transferResumeData <- proto.AddTransferParameters{
 					Hashes:           hashes,
 					Filename:         localFilename,
-					Filesize:         t.Size,
+					Filesize:         transfer.Size,
 					Pieces:           pieces,
 					DownloadedBlocks: downloadedBlocks,
 				}
 
-				wasFinished := t.piecePicker.IsFinished()
-				t.piecePicker.SetHave(pb.block.PieceIndex)
-				delete(t.incomingPieces, pb.block.PieceIndex)
-				if !wasFinished && t.piecePicker.IsFinished() {
+				wasFinished := transfer.piecePicker.IsFinished()
+				transfer.piecePicker.SetHave(pb.block.PieceIndex)
+				delete(transfer.incomingPieces, pb.block.PieceIndex)
+				if !wasFinished && transfer.piecePicker.IsFinished() {
 					// disconnect all peers
 					// status finished
 					// need save resume data
 					// nothing to do - all pieces marked as downloaded
 					log.Println("All data was received, close file")
-					file.Close()
-					s.transferChan <- t
+					s.transferChanFinished <- transfer
 				}
 			}
 
-		case peerConnection := <-t.peerConnChan:
+		case peerConnection := <-transfer.peerConnChan:
 			log.Println("Ready to download file")
-			blocks := t.piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
+			blocks := transfer.piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
 			req := proto.RequestParts64{Hash: peerConnection.transfer.Hash}
 			for i, x := range blocks {
 				// add piece as incoming to the transfer
-				if t.incomingPieces[x.PieceIndex] == nil {
-					t.incomingPieces[x.PieceIndex] = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
+				if transfer.incomingPieces[x.PieceIndex] == nil {
+					transfer.incomingPieces[x.PieceIndex] = &ReceivingPiece{hash: md4.New(), blocks: make([]*PendingBlock, 0)}
 				}
 				pb := MakePendingBlock(x, peerConnection.transfer.Size)
 				peerConnection.requestedBlocks = append(peerConnection.requestedBlocks, &pb)
@@ -255,14 +264,12 @@ func (t *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 		}
 	}
-
-	log.Println("Transfer main cycle exit")
 }
 
-func (t *Transfer) Stop() {
-	t.stopped = true
-	close(t.cmdChan)
-	t.waitGroup.Wait()
+func (transfer *Transfer) Stop() {
+	transfer.stopped = true
+	close(transfer.cmdChan)
+	transfer.waitGroup.Wait()
 }
 
 /*
@@ -298,8 +305,20 @@ func (t *Transfer) Tick(time time.Time, s *Session) {
 	}
 }*/
 
-func (t *Transfer) WantMorePeers() bool {
-	return !t.pause && !t.IsFinished() && t.policy.NumConnectCandidates() > 0
+func (transfer *Transfer) WantMorePeers() bool {
+	return transfer.LastError == nil &&
+		!transfer.Paused &&
+		!transfer.Finished &&
+		!transfer.ReadingResumeData &&
+		transfer.policy.NumConnectCandidates() > 0
+}
+
+func (transfer *Transfer) WantMoreSources(currentTime time.Time) bool {
+	return transfer.LastError == nil &&
+		!transfer.Paused &&
+		!transfer.Finished &&
+		!transfer.ReadingResumeData &&
+		(transfer.RequestSourcesNextTime.IsZero() || currentTime.After(transfer.RequestSourcesNextTime))
 }
 
 /*
@@ -352,12 +371,8 @@ E:
 	}
 }*/
 
-func (t *Transfer) IsFinished() bool {
-	return t.piecePicker.NumHave() == t.piecePicker.PiecesCount()
-}
-
-func (t *Transfer) ConnectOnePeer(time time.Time, s *Session) {
-	candidate := t.policy.FindConnectCandidate(time)
+func (transfer *Transfer) ConnectOnePeer(time time.Time, s *Session) {
+	candidate := transfer.policy.FindConnectCandidate(time)
 	if candidate != nil {
 		pc := s.GetPeerConnectionByEndpoint(candidate.endpoint)
 		if pc == nil {

@@ -29,6 +29,10 @@ func (pb PieceBlock) Start() uint64 {
 	return uint64(pb.PieceIndex)*PIECE_SIZE_UINT64 + uint64(pb.BlockIndex)*uint64(BLOCK_SIZE)
 }
 
+func (pb PieceBlock) ToString() string {
+	return fmt.Sprintf("[%d:%d]", pb.PieceIndex, pb.BlockIndex)
+}
+
 type AddTransferParameters struct {
 	Hashes           HashSet
 	Filename         ByteContainer
