@@ -34,34 +34,35 @@ type Transfer struct {
 	RequestSourcesNextTime time.Time
 	LastError              error
 
-	connections    []*PeerConnection
-	policy         Policy
-	piecePicker    *PiecePicker
-	waitGroup      sync.WaitGroup
-	cmdChan        chan string
-	dataChan       chan *PendingBlock
-	sourcesChan    chan proto.FoundFileSources
-	peerConnChan   chan *PeerConnection
-	hashSetChan    chan *proto.HashSet
-	incomingPieces map[int]*ReceivingPiece
+	policy                Policy
+	piecePicker           *PiecePicker
+	waitGroup             sync.WaitGroup
+	cmdChan               chan string
+	dataChan              chan *PendingBlock
+	sourcesChan           chan proto.FoundFileSources
+	peerConnChan          chan *PeerConnection
+	hashSetChan           chan *proto.HashSet
+	abortPendingBlockChan chan AbortPendingBlock
+	incomingPieces        map[int]*ReceivingPiece
 
 	Stat Statistics
 }
 
 func NewTransfer(hash proto.ED2KHash, filename string, size uint64) *Transfer {
 	return &Transfer{
-		Hash:           hash,
-		Size:           size,
-		Filename:       filename,
-		cmdChan:        make(chan string),
-		dataChan:       make(chan *PendingBlock, 10),
-		sourcesChan:    make(chan proto.FoundFileSources),
-		peerConnChan:   make(chan *PeerConnection),
-		hashSetChan:    make(chan *proto.HashSet),
-		policy:         MakePolicy(MAX_PEER_LIST_SIZE),
-		piecePicker:    NewPiecePicker(proto.NumPiecesAndBlocks(size)),
-		incomingPieces: make(map[int]*ReceivingPiece),
-		Stat:           MakeStatistics(),
+		Hash:                  hash,
+		Size:                  size,
+		Filename:              filename,
+		cmdChan:               make(chan string),
+		dataChan:              make(chan *PendingBlock, 10),
+		sourcesChan:           make(chan proto.FoundFileSources),
+		peerConnChan:          make(chan *PeerConnection),
+		hashSetChan:           make(chan *proto.HashSet),
+		abortPendingBlockChan: make(chan AbortPendingBlock),
+		policy:                MakePolicy(MAX_PEER_LIST_SIZE),
+		piecePicker:           NewPiecePicker(proto.NumPiecesAndBlocks(size)),
+		incomingPieces:        make(map[int]*ReceivingPiece),
+		Stat:                  MakeStatistics(),
 	}
 }
 
@@ -78,7 +79,6 @@ func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) 
 
 func (transfer *Transfer) AttachPeer(connection *PeerConnection) {
 	transfer.policy.newConnection(connection)
-	transfer.connections = append(transfer.connections, connection)
 	connection.transfer = transfer
 }
 
@@ -160,7 +160,9 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 				execute = false
 			}
 		case hashSet = <-transfer.hashSetChan:
-
+		case apb := <-transfer.abortPendingBlockChan:
+			log.Printf("abort block %s\n", apb.pendingBlock.block.ToString())
+			transfer.piecePicker.AbortBlock(apb.pendingBlock.block, apb.peer)
 		case pb := <-transfer.dataChan:
 			rp, ok := transfer.incomingPieces[pb.block.PieceIndex]
 			if !ok {
@@ -242,6 +244,7 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 
 		case peerConnection := <-transfer.peerConnChan:
 			log.Println("Ready to download file")
+			//if peerConnection.peer == nil
 			blocks := transfer.piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
 			req := proto.RequestParts64{Hash: peerConnection.transfer.Hash}
 			for i, x := range blocks {

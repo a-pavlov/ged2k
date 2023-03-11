@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/a-pavlov/ged2k/proto"
+	"log"
 )
 
 const BLOCK_STATE_NONE int = 0
@@ -70,8 +71,12 @@ func (dp *DownloadingPiece) AbortBlock(blockIndex int, peer *Peer) {
 
 	dp.blocks[blockIndex].blockState = BLOCK_STATE_NONE
 	dp.blocks[blockIndex].downloadersCount--
-	if dp.blocks[blockIndex].lastDownloader.endpoint == peer.endpoint {
-		dp.blocks[blockIndex].lastDownloader = nil
+	log.Printf("abort block %d peer %v last downloader %v\n", blockIndex, peer, dp.blocks[blockIndex].lastDownloader)
+	// block can be aborted many times - check last downloader is still not nil
+	if dp.blocks[blockIndex].lastDownloader != nil {
+		if dp.blocks[blockIndex].lastDownloader.endpoint == peer.endpoint {
+			dp.blocks[blockIndex].lastDownloader = nil
+		}
 	}
 }
 

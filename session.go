@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -17,7 +18,7 @@ type Session struct {
 	comm            chan string
 	wg              sync.WaitGroup
 	listener        net.Listener
-	peerConnections []*PeerConnection
+	peerConnections map[proto.Endpoint]*PeerConnection
 	transfers       map[proto.ED2KHash]*Transfer
 
 	// server section
@@ -50,7 +51,7 @@ func NewSession(config Config) *Session {
 	return &Session{
 		configuration:              config,
 		comm:                       make(chan string),
-		peerConnections:            make([]*PeerConnection, 0),
+		peerConnections:            make(map[proto.Endpoint]*PeerConnection, 0),
 		serverPackets:              make(chan proto.Serializable),
 		registerServerConnection:   make(chan *ServerConnection),
 		unregisterServerConnection: make(chan *ServerConnection),
@@ -144,6 +145,11 @@ func (s *Session) Tick() {
 						}
 						s.serverConnection.DisconnectRequested = true
 					}
+
+					for ep, x := range s.peerConnections {
+						fmt.Printf("REQ ds %s\n", ep.AsString())
+						x.Close(true)
+					}
 				case "search":
 					if s.serverConnection != nil && s.serverConnection.Connected {
 						parsed, err := proto.BuildEntries(0, 0, 0, 0, "", "", "", 0, 0, elems[1])
@@ -169,7 +175,8 @@ func (s *Session) Tick() {
 					}
 				case "peer":
 					pc := PeerConnection{Address: elems[1]}
-					s.peerConnections = append(s.peerConnections, &pc)
+					ep, _ := proto.FromString(elems[1])
+					s.peerConnections[ep] = &pc
 					go pc.Start(s)
 				case "load":
 					for i := 1; i < len(elems); i++ {
@@ -197,8 +204,13 @@ func (s *Session) Tick() {
 						log.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
 						tran := NewTransfer(hash, filename, size)
 						s.transfers[hash] = tran
-						tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S'})
-						log.Println("Added peer to transfer")
+						if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S'}) {
+							log.Printf("Added peer 127.0.0.1:4662\n")
+						}
+						if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4663"), SourceFlag: 'S'}) {
+							log.Printf("Added peer 127.0.0.1:4663\n")
+						}
+
 						go tran.Start(s, nil)
 					} else {
 						log.Println("Error on transfer adding", err)
@@ -306,18 +318,18 @@ func (s *Session) Tick() {
 						if transfer.WantMorePeers() {
 							candidate := transfer.policy.FindConnectCandidate(currentTime)
 							if candidate != nil {
-								peerConnection := s.GetPeerConnectionByEndpoint(candidate.endpoint)
-								if peerConnection == nil {
+								_, ok := s.peerConnections[candidate.endpoint]
+								if !ok {
 									candidate.LastConnected = currentTime
 									peerConnection := NewPeerConnection(candidate.endpoint.AsString(), transfer, candidate)
-									s.peerConnections = append(s.peerConnections, peerConnection)
-									transfer.connections = append(transfer.connections, peerConnection)
+									s.peerConnections[candidate.endpoint] = peerConnection
 									candidate.peerConnection = peerConnection
 									connectionsReserve--
 									stepsSinceLastConnect = 0
 									go peerConnection.Start(s)
 								} else {
 									// move next connection on peer to the future to avoid returning it as candidate
+									fmt.Printf("candidate already in session: %s", candidate.endpoint)
 									candidate.NextConnection = currentTime.Add(time.Second * time.Duration(15))
 								}
 							}
@@ -354,21 +366,16 @@ func (s *Session) Tick() {
 			lastTick = currentTime
 
 		case peerConnection := <-s.registerPeerConnection:
-			s.peerConnections = append(s.peerConnections, peerConnection)
+			fmt.Printf("register peer connection %s", peerConnection.Address)
+			s.peerConnections[peerConnection.endpoint] = peerConnection
 			if peerConnection.transfer == nil {
 				//looking for corresponding transfer
 				// policy - newConnection
 				//peerConnection.transfer.
 			}
 		case peerConnectionPacket := <-s.unregisterPeerConnection:
-			s.peerConnections = removePeerConnection(peerConnectionPacket.Connection, s.peerConnections)
-			if peerConnectionPacket.Connection.transfer != nil {
-				peerConnectionPacket.Connection.transfer.connections = removePeerConnection(peerConnectionPacket.Connection, peerConnectionPacket.Connection.transfer.connections)
-				// abort all blocks we have requested for now
-				for _, x := range peerConnectionPacket.Connection.requestedBlocks {
-					peerConnectionPacket.Connection.transfer.piecePicker.AbortBlock(x.block, peerConnectionPacket.Connection.peer)
-				}
-			}
+			log.Printf("unregister peer connection, peer %v", peerConnectionPacket.Connection.peer)
+			delete(s.peerConnections, peerConnectionPacket.Connection.endpoint)
 
 			if peerConnectionPacket.Connection.peer != nil {
 				peerConnectionPacket.Connection.peer.peerConnection = nil
@@ -383,10 +390,11 @@ func (s *Session) Tick() {
 			peerConnectionPacket.Connection.peer = nil
 		case transfer := <-s.transferChanFinished:
 			transfer.Finished = true
-			for _, x := range transfer.connections {
-				go x.Close(true)
+			for _, x := range s.peerConnections {
+				if x.transfer == transfer {
+					go x.Close(true)
+				}
 			}
-			transfer.connections = transfer.connections[:0]
 		case transfer := <-s.transferChanPaused:
 			transfer.Paused = true
 		// close all transfer's peers
@@ -472,7 +480,7 @@ func (s *Session) CreateHelloAnswer() proto.HelloAnswer {
 
 	mo := proto.MiscOptions{}
 	mo.UnicodeSupport = 1
-	mo.DataCompVer = 0        // support data compression
+	mo.DataCompVer = 1        // support data compression
 	mo.NoViewSharedFiles = 1  // temp value
 	mo.SourceExchange1Ver = 0 // SOURCE_EXCHG_LEVEL - important value
 

@@ -68,6 +68,11 @@ func (pb *PendingBlock) ReceiveToEof(reader io.Reader, begin uint64) (int, error
 	return n, err
 }
 
+type AbortPendingBlock struct {
+	pendingBlock *PendingBlock
+	peer         *Peer
+}
+
 type PeerConnectionPacket struct {
 	Connection *PeerConnection
 	Error      error
@@ -284,6 +289,8 @@ M:
 				break
 			}
 
+			fmt.Printf("Recv compressed part, offset: %d, compressed data length %d\n", cp.Offset, cp.CompressedDataLength)
+
 			block := proto.FromOffset(cp.Offset)
 			for i, x := range peerConnection.requestedBlocks {
 				if x.block == block {
@@ -291,6 +298,7 @@ M:
 					recvBytes, err := io.ReadFull(peerConnection.connection, compressedData)
 
 					if err != nil {
+						fmt.Printf("error on read compressed part %v\n", err)
 						// close peerConnection and exit
 						lastError = err
 						break M
@@ -301,6 +309,7 @@ M:
 					b := bytes.NewReader(compressedData)
 					z, err := zlib.NewReader(b)
 					if err != nil {
+						fmt.Printf("Error on un-compression %v\n", err)
 						return
 					}
 
@@ -310,6 +319,7 @@ M:
 					recvBytes, err = x.ReceiveToEof(z, cp.Offset)
 					if err != nil {
 						lastError = err
+						fmt.Printf("Error on read un-compression %v\n", err)
 						break M
 					} else {
 						// already taken in account above
@@ -381,10 +391,13 @@ func (conneection *PeerConnection) receiveCompressedData(offset uint64, compress
 }
 
 func (peerConnection *PeerConnection) Close(byRequest bool) {
+	log.Println(peerConnection, "close req")
 	peerConnection.closedByRequest = byRequest
-	err := peerConnection.connection.Close()
-	if err != nil {
-		log.Printf("unable to close peed connection %v", err)
+	if peerConnection.connection != nil {
+		err := peerConnection.connection.Close()
+		if err != nil {
+			log.Printf("unable to close peed connection %v", err)
+		}
 	}
 }
 
@@ -408,6 +421,9 @@ func (peerConnection *PeerConnection) sendStat(s *Session, n int) {
 }
 
 func (peerConnection *PeerConnection) unregister(s *Session, err error) {
+	for _, pb := range peerConnection.requestedBlocks {
+		peerConnection.transfer.abortPendingBlockChan <- AbortPendingBlock{pendingBlock: pb, peer: peerConnection.peer}
+	}
 	s.unregisterPeerConnection <- PeerConnectionPacket{Connection: peerConnection, Error: err}
 }
 

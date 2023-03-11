@@ -126,10 +126,10 @@ func (pp *PiecePicker) PickPieces(requiredBlocksCount int, peer *Peer) []proto.P
 func (pp *PiecePicker) AbortBlock(block proto.PieceBlock, peer *Peer) bool {
 	pp.mutex.Lock()
 	defer pp.mutex.Unlock()
-	log.Printf("Abort block, piece index %d block index %d\n", block.PieceIndex, block.BlockIndex)
+	log.Printf("Abort block %s\n", block.ToString())
 	dp := pp.getDownloadingPiece(block.PieceIndex)
 	if dp != nil {
-		dp.AbortBlock(block.PieceIndex, peer)
+		dp.AbortBlock(block.BlockIndex, peer)
 		return true
 	}
 
