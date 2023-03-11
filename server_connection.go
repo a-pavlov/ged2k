@@ -14,9 +14,14 @@ type ServerConnection struct {
 	connection net.Conn
 	address    string
 	lastError  error
+
+	Connected           bool
+	DisconnectRequested bool
+	LastReceivedTime    time.Time
+	LastSendTime        time.Time
 }
 
-func CreateServerConnection(a string) *ServerConnection {
+func NewServerConnection(a string) *ServerConnection {
 	return &ServerConnection{buffer: make([]byte, 200), address: a}
 }
 
@@ -173,6 +178,13 @@ func (sc *ServerConnection) SendPacket(data proto.Serializable) (int, error) {
 		panic("ServerConnection Send with unknown type " + reflect.TypeOf(data).String())
 	}
 
+	sc.LastSendTime = time.Now()
 	ph.Write(bytes)
 	return sc.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
+}
+
+func (sc *ServerConnection) Close() {
+	if sc.connection != nil {
+		sc.lastError = sc.connection.Close()
+	}
 }

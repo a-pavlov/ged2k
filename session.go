@@ -84,12 +84,7 @@ func (s *Session) Tick() {
 		go s.accept(&s.listener)
 	}
 
-	serverConnected := false
-	serverRequestedDisconnect := false
 	var candidate *ServerConnection
-	serverLastReq := time.Time{}
-	serverLastRes := time.Time{}
-	//serverCloseRequested := false
 
 	lastTick := time.Time{}
 
@@ -99,12 +94,8 @@ func (s *Session) Tick() {
 			{
 				log.Printf("Server connection closed, reason: \"%v\"\n", sc.lastError)
 				s.serverConnection = nil
-				serverConnected = false
-				serverLastRes = time.Time{}
-				serverLastReq = time.Time{}
-				//serverCloseRequested = false
-
 				if candidate != nil {
+					s.serverConnection = candidate
 					go candidate.Start(s)
 					candidate = nil
 				}
@@ -112,14 +103,14 @@ func (s *Session) Tick() {
 		case sc := <-s.registerServerConnection:
 			{
 				log.Println("Server connection established")
-				s.serverConnection = sc
-				if candidate != nil || serverRequestedDisconnect {
+				sc.Connected = true
+				sc.LastReceivedTime = time.Now().Add(time.Duration(30) * time.Second)
+
+				if candidate != nil || sc.DisconnectRequested {
 					log.Println("Server disconnect was requested")
 					//serverCloseRequested = true
 					s.serverConnection.connection.Close()
 				}
-				serverConnected = true
-				serverRequestedDisconnect = false
 			}
 		case cmd, ok := <-s.comm:
 			if !ok {
@@ -135,45 +126,46 @@ func (s *Session) Tick() {
 				case "connect":
 					log.Println("Requested connect to", elems[1])
 					if s.serverConnection == nil {
-						go CreateServerConnection(elems[1]).Start(s)
+						s.serverConnection = NewServerConnection(elems[1])
+						go s.serverConnection.Start(s)
 					} else {
-						candidate = CreateServerConnection(elems[1])
-						if s.serverConnection != nil && serverConnected {
-							//serverCloseRequested = true
-							s.serverConnection.connection.Close()
+						candidate = NewServerConnection(elems[1])
+						if s.serverConnection != nil && s.serverConnection.Connected {
+							if !s.serverConnection.DisconnectRequested {
+								go s.serverConnection.Close()
+							}
+							s.serverConnection.DisconnectRequested = true
 						}
 					}
 				case "disconnect":
 					if s.serverConnection != nil {
-						if serverConnected {
-							//serverCloseRequested = true
-							s.serverConnection.connection.Close()
-						} else {
-							serverRequestedDisconnect = true
+						if s.serverConnection.Connected && !s.serverConnection.DisconnectRequested {
+							go s.serverConnection.Close()
 						}
+						s.serverConnection.DisconnectRequested = true
 					}
 				case "search":
-					if s.serverConnection != nil && serverConnected {
+					if s.serverConnection != nil && s.serverConnection.Connected {
 						parsed, err := proto.BuildEntries(0, 0, 0, 0, "", "", "", 0, 0, elems[1])
 						if err == nil {
 							req, err := proto.PackRequest(parsed)
 							if err == nil {
 								_, err = s.serverConnection.SendPacket(&req)
-								if err == nil {
-									serverLastReq = time.Now()
-								}
+								//if err == nil {
+								//	serverLastReq = time.Now()
+								//}
 							}
 						}
 					}
 				case "serverlist":
-					if s.serverConnection != nil && serverConnected && serverLastReq.IsZero() {
+					if s.serverConnection != nil && s.serverConnection.Connected {
 						req := proto.GetServerList{}
-						_, err := s.serverConnection.SendPacket(&req)
-						if err != nil {
+						s.serverConnection.SendPacket(&req)
+						/*if err != nil {
 							s.serverConnection.connection.Close()
 						} else {
 							serverLastReq = time.Now()
-						}
+						}*/
 					}
 				case "peer":
 					pc := PeerConnection{Address: elems[1]}
@@ -218,8 +210,11 @@ func (s *Session) Tick() {
 			}
 		case c, ok := <-s.serverPackets:
 			if ok {
-				serverLastRes = time.Now()
-				serverLastReq = time.Time{}
+				if s.serverConnection != nil {
+					s.serverConnection.LastReceivedTime = time.Now()
+				}
+
+				log.Printf("server last recv time %v\n", s.serverConnection.LastReceivedTime)
 
 				if c != nil {
 					switch data := c.(type) {
@@ -246,6 +241,8 @@ func (s *Session) Tick() {
 						}
 					case *proto.ByteContainer:
 						log.Println("Message from server", string(*data))
+					case *proto.Status:
+						log.Printf("Server status[users: %d, files:%d]\n", data.UsersCount, data.FilesCount)
 					default:
 						log.Println("session: unknown server packet received")
 					}
@@ -264,21 +261,31 @@ func (s *Session) Tick() {
 				statPacket.Connection.transfer.Stat.SendBytes(statPacket.Counter)
 			}
 		case <-tick:
-			//for i, x := range s.transfers {
-			//	x.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S', Connectable: true})
-			//	log.Println("Add peer to", i)
-			//}
 			currentTime := time.Now()
 			if s.serverConnection != nil {
-				if !serverLastReq.IsZero() && currentTime.Sub(serverLastReq).Seconds() > 5 {
-					serverLastReq = time.Time{}
+
+				if !s.serverConnection.LastReceivedTime.IsZero() &&
+					currentTime.After(s.serverConnection.LastReceivedTime.Add(time.Duration(30)*time.Second)) &&
+					currentTime.After(s.serverConnection.LastSendTime.Add(time.Duration(30)*time.Second)) {
+					log.Printf("server connection ping required, last recv time %v last send time %v\n",
+						s.serverConnection.LastReceivedTime, s.serverConnection.LastSendTime)
+					sl := proto.GetServerList{}
+					_, err := s.serverConnection.SendPacket(&sl)
+					if err != nil {
+						log.Printf("server packet send error: %v\n", err)
+					}
 				}
 
-				if !serverLastRes.IsZero() && currentTime.Sub(serverLastRes).Seconds() > 40 {
-					// no response for long time
+				if s.configuration.ServerReconnectTimeoutSec > 0 &&
+					!s.serverConnection.LastReceivedTime.IsZero() &&
+					currentTime.After(s.serverConnection.LastReceivedTime.Add(time.Duration(s.configuration.ServerReconnectTimeoutSec)*time.Second)) {
+					log.Printf("server connection no answer for a long time %v last send time %v - reconnect required",
+						s.serverConnection.LastReceivedTime, s.serverConnection.LastSendTime)
+					// no answer from server connection for a long time, reconnect
+					candidate = NewServerConnection(s.serverConnection.address)
+					s.serverConnection.DisconnectRequested = true
+					go s.serverConnection.Close()
 				}
-
-				// send statistics here
 			}
 
 			// enumerate transfer to get new peers
@@ -289,7 +296,7 @@ func (s *Session) Tick() {
 				for enumerateCandidates {
 					for _, transfer := range s.transfers {
 						if transfer.WantMoreSources(currentTime) {
-							if s.serverConnection != nil && serverConnected {
+							if s.serverConnection != nil && s.serverConnection.Connected {
 								req := proto.GetFileSources{Hash: transfer.Hash}
 								go s.serverConnection.SendPacket(&req)
 								// request next time in one minute
@@ -420,10 +427,11 @@ func (s *Session) Stop() {
 		x.Close(true)
 	}
 
-	close(s.comm)
 	if s.serverConnection != nil {
-		s.serverConnection.connection.Close()
+		go s.serverConnection.Close()
 	}
+
+	close(s.comm)
 	s.wg.Wait()
 }
 
@@ -498,13 +506,6 @@ func (s *Session) DiscardPacket() {
 
 func (s *Session) Cmd(cmd string) {
 	s.comm <- cmd
-}
-
-func (s *Session) Send(serverConnection *ServerConnection, data proto.Serializable) {
-	_, serverConnection.lastError = serverConnection.SendPacket(data)
-	if serverConnection.lastError != nil {
-		serverConnection.connection.Close()
-	}
 }
 
 func (s *Session) GetPeerConnectionByEndpoint(endpoint proto.Endpoint) *PeerConnection {
