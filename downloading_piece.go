@@ -7,7 +7,6 @@ import (
 
 const BLOCK_STATE_NONE int = 0
 const BLOCK_STATE_REQUESTED int = 1
-const BLOCK_STATE_WRITING int = 2
 const BLOCK_STATE_FINISHED int = 3
 
 type Block struct {
@@ -67,6 +66,10 @@ func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGa
 func (dp *DownloadingPiece) AbortBlock(blockIndex int, peer *Peer) {
 	if blockIndex > len(dp.blocks) {
 		panic("block index is out of range")
+	}
+
+	if dp.blocks[blockIndex].blockState == BLOCK_STATE_FINISHED {
+		log.Printf("can not abort block %d due to finished status\n", blockIndex)
 	}
 
 	dp.blocks[blockIndex].blockState = BLOCK_STATE_NONE

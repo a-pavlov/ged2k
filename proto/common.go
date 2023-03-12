@@ -404,7 +404,7 @@ func (ip IP) Size() int {
 	return DataSize(uint32(ip))
 }
 
-func (i Endpoint) AsString() string {
+func (i Endpoint) ToString() string {
 	return fmt.Sprintf("%d.%d.%d.%d:%d", i.Ip&0xff, (i.Ip>>8)&0xff, (i.Ip>>16)&0xff, (i.Ip>>24)&0xff, i.Port)
 }
 

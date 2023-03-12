@@ -147,10 +147,10 @@ func (policy *Policy) erasePeers() bool {
 }
 
 func (policy *Policy) newConnection(connection *PeerConnection) bool {
-	peer, ok := policy.peers[connection.endpoint]
+	peer, ok := policy.peers[connection.Endpoint]
 	if ok {
 		if peer.peerConnection != nil {
-			log.Printf("peer %s already has peer connection\n", peer.endpoint.AsString())
+			log.Printf("peer %s already has peer connection\n", peer.endpoint.ToString())
 			return false
 		}
 
@@ -158,7 +158,7 @@ func (policy *Policy) newConnection(connection *PeerConnection) bool {
 		return true
 	}
 
-	p := Peer{endpoint: connection.endpoint, peerConnection: connection, SourceFlag: PEER_SRC_INCOMING}
+	p := Peer{endpoint: connection.Endpoint, peerConnection: connection, SourceFlag: PEER_SRC_INCOMING}
 	return policy.AddPeer(&p)
 }
 
@@ -235,7 +235,7 @@ func (policy *Policy) FindConnectCandidate(t time.Time) *Peer {
 
 func (policy *Policy) PeerConnectionClosed(peerConnection *PeerConnection, err error) {
 	if peerConnection.peer != nil {
-		p, ok := policy.peers[peerConnection.endpoint]
+		p, ok := policy.peers[peerConnection.Endpoint]
 		if ok {
 			p.LastConnected = time.Now()
 			p.peerConnection = nil

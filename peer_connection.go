@@ -84,11 +84,12 @@ type StatPacket struct {
 }
 
 type PeerConnection struct {
-	connection net.Conn
-	transfer   *Transfer
-	peer       *Peer
-	endpoint   proto.Endpoint
-	Address    string
+	connection      net.Conn
+	transfer        *Transfer
+	peer            *Peer
+	Endpoint        proto.Endpoint
+	Connected       bool
+	DisconnectLater bool
 
 	Stat            Statistics
 	Speed           int
@@ -96,14 +97,14 @@ type PeerConnection struct {
 	closedByRequest bool
 }
 
-func NewPeerConnection(address string, transfer *Transfer, p *Peer) *PeerConnection {
-	return &PeerConnection{Address: address, transfer: transfer, peer: p, Stat: MakeStatistics(), requestedBlocks: make([]*PendingBlock, 0)}
+func NewPeerConnection(e proto.Endpoint, transfer *Transfer, p *Peer) *PeerConnection {
+	return &PeerConnection{Endpoint: e, transfer: transfer, peer: p, Stat: MakeStatistics(), requestedBlocks: make([]*PendingBlock, 0)}
 }
 
 func (peerConnection *PeerConnection) Start(s *Session) {
-	log.Println("Peer connection start", peerConnection.peer.endpoint.AsString())
+	log.Println("Peer connection start", peerConnection.peer.endpoint.ToString())
 	if peerConnection.connection == nil {
-		conn, err := net.Dial("tcp", peerConnection.peer.endpoint.AsString())
+		conn, err := net.Dial("tcp", peerConnection.peer.endpoint.ToString())
 		if err != nil {
 			log.Println("Can not connect", err)
 			peerConnection.unregister(s, err)
@@ -111,6 +112,7 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 		}
 		hello := proto.Hello{Answer: s.CreateHelloAnswer(), HashLength: byte(proto.HASH_LEN)}
 		peerConnection.connection = conn
+		s.registerPeerConnection <- peerConnection
 		peerConnection.SendPacket(s, proto.OP_EDONKEYPROT, proto.OP_HELLO, &hello)
 	}
 
@@ -391,13 +393,19 @@ func (conneection *PeerConnection) receiveCompressedData(offset uint64, compress
 }
 
 func (peerConnection *PeerConnection) Close(byRequest bool) {
-	log.Println(peerConnection, "close req")
-	peerConnection.closedByRequest = byRequest
-	if peerConnection.connection != nil {
+	if peerConnection.Connected {
+		fmt.Println("close connection")
+		if peerConnection.connection == nil {
+			panic("connection is nil")
+		}
+
 		err := peerConnection.connection.Close()
 		if err != nil {
 			log.Printf("unable to close peed connection %v", err)
 		}
+	} else {
+		fmt.Println("no connection - set disconnect later")
+		peerConnection.DisconnectLater = true
 	}
 }
 

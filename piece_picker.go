@@ -136,19 +136,19 @@ func (pp *PiecePicker) AbortBlock(block proto.PieceBlock, peer *Peer) bool {
 	return false
 }
 
-func (pp *PiecePicker) FinishBlock(pieceIndex int, blockIndex int) {
+func (pp *PiecePicker) FinishBlock(pieceBlock proto.PieceBlock) {
 	pp.mutex.Lock()
 	defer pp.mutex.Unlock()
-	p := pp.getDownloadingPiece(pieceIndex)
+	p := pp.getDownloadingPiece(pieceBlock.PieceIndex)
 	if p != nil {
-		b := p.blocks[blockIndex]
+		b := p.blocks[pieceBlock.BlockIndex]
 		if b.blockState == BLOCK_STATE_FINISHED {
 			panic("block state already finished")
 		}
 		b.blockState = BLOCK_STATE_FINISHED
-		p.blocks[blockIndex] = b
+		p.blocks[pieceBlock.BlockIndex] = b
 	} else {
-		// log downloading piece was not found
+		log.Printf("finish block %s not in downloading queue\n", pieceBlock.ToString())
 	}
 }
 

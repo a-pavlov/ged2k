@@ -672,8 +672,8 @@ func Test_Endpoint2Str(t *testing.T) {
 		ep3}
 
 	for i := 0; i < len(template); i++ {
-		if template[i] != endpoints[i].AsString() {
-			t.Errorf("Endpoint to string %s does not match %s", endpoints[i].AsString(), template[i])
+		if template[i] != endpoints[i].ToString() {
+			t.Errorf("Endpoint to string %s does not match %s", endpoints[i].ToString(), template[i])
 		}
 	}
 

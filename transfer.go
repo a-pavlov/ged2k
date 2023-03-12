@@ -182,6 +182,7 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			if err == nil {
 				file.Write(pb.data)
 				file.Sync()
+				transfer.piecePicker.FinishBlock(pb.block)
 				// need to save resume data:
 				_, ok := downloadedBlocks[pb.block.PieceIndex]
 				if !ok {
@@ -263,7 +264,7 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 				go peerConnection.SendPacket(s, proto.OP_EMULEPROT, proto.OP_REQUESTPARTS_I64, &req)
 			} else {
 				log.Println("No more blocks for peer connection")
-				go peerConnection.Close(true)
+				peerConnection.Close(true)
 			}
 		}
 	}
@@ -373,7 +374,7 @@ E:
 		}
 	}
 }*/
-
+/*
 func (transfer *Transfer) ConnectOnePeer(time time.Time, s *Session) {
 	candidate := transfer.policy.FindConnectCandidate(time)
 	if candidate != nil {
@@ -382,4 +383,4 @@ func (transfer *Transfer) ConnectOnePeer(time time.Time, s *Session) {
 
 		}
 	}
-}
+}*/

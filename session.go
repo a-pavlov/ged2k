@@ -147,7 +147,7 @@ func (s *Session) Tick() {
 					}
 
 					for ep, x := range s.peerConnections {
-						fmt.Printf("REQ ds %s\n", ep.AsString())
+						fmt.Printf("REQ ds %s\n", ep.ToString())
 						x.Close(true)
 					}
 				case "search":
@@ -174,10 +174,12 @@ func (s *Session) Tick() {
 						}*/
 					}
 				case "peer":
-					pc := PeerConnection{Address: elems[1]}
-					ep, _ := proto.FromString(elems[1])
-					s.peerConnections[ep] = &pc
-					go pc.Start(s)
+					proto.FromString(elems[1])
+					/*if err == nil {
+						pc := NewPeerConnection(ep, nil, )
+						ep, _ := proto.FromString(elems[1])
+						pc.Start(s)
+					}*/
 				case "load":
 					for i := 1; i < len(elems); i++ {
 						rd, err := ioutil.ReadFile(elems[1])
@@ -243,9 +245,9 @@ func (s *Session) Tick() {
 							log.Printf("Got sources for %s\n", data.Hash)
 							for _, x := range data.Sources {
 								if transfer.policy.AddPeer(&Peer{SourceFlag: PEER_SRC_SERVER, endpoint: x}) {
-									log.Printf("Transfer %s added source %s\n", data.Hash.ToString(), x.AsString())
+									log.Printf("Transfer %s added source %s\n", data.Hash.ToString(), x.ToString())
 								} else {
-									log.Printf("Can not add peer %s to transfer %s\n", x.AsString(), data.Hash.ToString())
+									log.Printf("Can not add peer %s to transfer %s\n", x.ToString(), data.Hash.ToString())
 								}
 							}
 						} else {
@@ -321,7 +323,7 @@ func (s *Session) Tick() {
 								_, ok := s.peerConnections[candidate.endpoint]
 								if !ok {
 									candidate.LastConnected = currentTime
-									peerConnection := NewPeerConnection(candidate.endpoint.AsString(), transfer, candidate)
+									peerConnection := NewPeerConnection(candidate.endpoint, transfer, candidate)
 									s.peerConnections[candidate.endpoint] = peerConnection
 									candidate.peerConnection = peerConnection
 									connectionsReserve--
@@ -329,7 +331,7 @@ func (s *Session) Tick() {
 									go peerConnection.Start(s)
 								} else {
 									// move next connection on peer to the future to avoid returning it as candidate
-									fmt.Printf("candidate already in session: %s", candidate.endpoint)
+									fmt.Printf("candidate already in session: %s", candidate.endpoint.ToString())
 									candidate.NextConnection = currentTime.Add(time.Second * time.Duration(15))
 								}
 							}
@@ -366,8 +368,12 @@ func (s *Session) Tick() {
 			lastTick = currentTime
 
 		case peerConnection := <-s.registerPeerConnection:
-			fmt.Printf("register peer connection %s", peerConnection.Address)
-			s.peerConnections[peerConnection.endpoint] = peerConnection
+			fmt.Printf("register peer connection %s", peerConnection.Endpoint.ToString())
+			if peerConnection.DisconnectLater {
+				peerConnection.Close(true)
+			}
+			peerConnection.Connected = true
+			s.peerConnections[peerConnection.Endpoint] = peerConnection
 			if peerConnection.transfer == nil {
 				//looking for corresponding transfer
 				// policy - newConnection
@@ -375,7 +381,7 @@ func (s *Session) Tick() {
 			}
 		case peerConnectionPacket := <-s.unregisterPeerConnection:
 			log.Printf("unregister peer connection, peer %v", peerConnectionPacket.Connection.peer)
-			delete(s.peerConnections, peerConnectionPacket.Connection.endpoint)
+			delete(s.peerConnections, peerConnectionPacket.Connection.Endpoint)
 
 			if peerConnectionPacket.Connection.peer != nil {
 				peerConnectionPacket.Connection.peer.peerConnection = nil
@@ -392,7 +398,7 @@ func (s *Session) Tick() {
 			transfer.Finished = true
 			for _, x := range s.peerConnections {
 				if x.transfer == transfer {
-					go x.Close(true)
+					x.Close(true)
 				}
 			}
 		case transfer := <-s.transferChanPaused:
@@ -516,6 +522,7 @@ func (s *Session) Cmd(cmd string) {
 	s.comm <- cmd
 }
 
+/*
 func (s *Session) GetPeerConnectionByEndpoint(endpoint proto.Endpoint) *PeerConnection {
 	for _, x := range s.peerConnections {
 		if x.endpoint == endpoint {
@@ -525,3 +532,4 @@ func (s *Session) GetPeerConnectionByEndpoint(endpoint proto.Endpoint) *PeerConn
 
 	return nil
 }
+*/
