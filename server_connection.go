@@ -184,7 +184,9 @@ func (sc *ServerConnection) SendPacket(data proto.Serializable) (int, error) {
 }
 
 func (sc *ServerConnection) Close() {
-	if sc.connection != nil {
-		sc.lastError = sc.connection.Close()
+	if sc.Connected {
+		if sc.connection != nil {
+			sc.lastError = sc.connection.Close()
+		}
 	}
 }

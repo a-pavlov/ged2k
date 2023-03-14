@@ -382,6 +382,7 @@ func (connection *PeerConnection) SendPacket(s *Session, protocol byte, packet b
 	log.Printf("Bytes: %x\n", bytes)
 	n, err := connection.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
 	if err != nil {
+		log.Printf("peer connection can not write packet %v\n", err)
 		connection.Close(false)
 	} else {
 		connection.sendStat(s, n)

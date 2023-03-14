@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/a-pavlov/ged2k/proto"
@@ -31,12 +30,12 @@ type Transfer struct {
 	ReadingResumeData      bool
 	Paused                 bool
 	Finished               bool
+	Stopped                bool
 	RequestSourcesNextTime time.Time
 	LastError              error
 
 	policy                Policy
 	piecePicker           *PiecePicker
-	waitGroup             sync.WaitGroup
 	cmdChan               chan string
 	dataChan              chan *PendingBlock
 	sourcesChan           chan proto.FoundFileSources
@@ -83,19 +82,16 @@ func (transfer *Transfer) AttachPeer(connection *PeerConnection) {
 }
 
 func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
-	transfer.waitGroup.Add(1)
 
 	var hashSet *proto.HashSet
 	file, err := os.OpenFile(transfer.Filename, os.O_WRONLY|os.O_RDONLY|os.O_CREATE, 0666)
 
 	if err != nil {
-		defer transfer.waitGroup.Done()
 		s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("can not open file %s with error %v", transfer.Filename, err)}
 		return
 	}
 
 	defer file.Close()
-	defer transfer.waitGroup.Done()
 
 	piecesCount, _ := proto.NumPiecesAndBlocks(transfer.Size)
 	hashes := proto.HashSet{Hash: transfer.Hash, PieceHashes: make([]proto.ED2KHash, 0)}
@@ -200,7 +196,8 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 				}
 			} else {
 				s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("file %s seek error %v", transfer.Filename, err)}
-				return
+				execute = false
+				break
 			}
 
 			// piece completely downloaded
@@ -268,52 +265,19 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 		}
 	}
+	s.transferChanClosed <- transfer
 }
 
 func (transfer *Transfer) Stop() {
-	transfer.stopped = true
 	close(transfer.cmdChan)
-	transfer.waitGroup.Wait()
 }
-
-/*
-func (t *Transfer) ConnectToPeer(peer Peer) {
-	peer.LastConnected = time.Now()
-	peer.NextConnection = time.Time{}
-	connection := PeerConnection{session: t.session, peer: peer, transfer: t}
-	connection.peer.peerConnection = &connection
-	t.connections = append(t.connections, &connection)
-	//session.connections.add(c)
-	connection.Connect()
-}
-
-func (t *Transfer) PeerConnectionClose(peerConnection *PeerConnection, e error) {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
-	t.connections = removePeerConnection(peerConnection, t.connections)
-	t.policy.PeerConnectionClosed(peerConnection, e)
-}
-
-func (t *Transfer) Tick(time time.Time, s *Session) {
-	if !t.pause && !t.IsFinished() {
-		for i := 0; i < 3; i++ {
-			peer := t.policy.FindConnectCandidate(time)
-			if !peer.IsEmpty() {
-				peerConnection := s.ConnectoToPeer(peer.endpoint)
-				if peerConnection != nil {
-					// set peer connection to peer in policy
-					//t.policy.
-				}
-			}
-		}
-	}
-}*/
 
 func (transfer *Transfer) WantMorePeers() bool {
 	return transfer.LastError == nil &&
 		!transfer.Paused &&
 		!transfer.Finished &&
 		!transfer.ReadingResumeData &&
+		!transfer.Stopped &&
 		transfer.policy.NumConnectCandidates() > 0
 }
 
@@ -322,65 +286,6 @@ func (transfer *Transfer) WantMoreSources(currentTime time.Time) bool {
 		!transfer.Paused &&
 		!transfer.Finished &&
 		!transfer.ReadingResumeData &&
+		!transfer.Stopped &&
 		(transfer.RequestSourcesNextTime.IsZero() || currentTime.After(transfer.RequestSourcesNextTime))
 }
-
-/*
-func (t *Transfer) Tick() {
-	tick := time.Tick(5000 * time.Millisecond)
-	execute := true
-	t.waitGroup.Add(1)
-	defer t.waitGroup.Done()
-	peerConnectionClosedChan := make(chan *PeerConnection)
-
-E:
-	for execute {
-		select {
-		case peerConn := <-peerConnectionClosedChan:
-			t.policy.PeerConnectionClosed(peerConn, peerConn.LastError)
-			t.session.ClosePeerConnection(peerConn.endpoint)
-		case _, ok := <-t.sourcesChan:
-			if ok {
-				// pass sources to the policy
-			}
-		case comm, ok := <-t.commChan:
-			if !ok {
-				log.Println("Transfer exit requested")
-				break E
-			}
-
-			switch comm {
-			case "stop":
-			// stop processing
-			case "pause":
-				t.pause = true
-			case "resume":
-				t.pause = false
-			}
-		case <-tick:
-			log.Println("Transfer tick")
-			if !t.pause && !t.IsFinsihed() {
-				for i := 0; i < 3; i++ {
-					peer := t.policy.FindConnectCandidate(time.Now())
-					if !peer.IsEmpty() {
-						peerConnection := t.session.ConnectoToPeer(peer.endpoint)
-						if peerConnection != nil {
-							// set peer connection to peer in policy
-							//t.policy.
-						}
-					}
-				}
-			}
-		}
-	}
-}*/
-/*
-func (transfer *Transfer) ConnectOnePeer(time time.Time, s *Session) {
-	candidate := transfer.policy.FindConnectCandidate(time)
-	if candidate != nil {
-		pc := s.GetPeerConnectionByEndpoint(candidate.endpoint)
-		if pc == nil {
-
-		}
-	}
-}*/

@@ -20,7 +20,7 @@ func main() {
 
 	log.Println("GED2K has been started")
 	reader := bufio.NewReader(os.Stdin)
-	cfg := Config{UserAgent: proto.EMULE, ListenPort: 4888, Name: "TestGed2k", MaxConnections: 100, ModName: "jed2k", ClientName: "jed2k", AppVersion: 0x3c}
+	cfg := Config{UserAgent: proto.EMULE, ListenPort: 4888, Name: "TestGed2k", MaxConnections: 100, ModName: "jed2k", ClientName: "jed2k", AppVersion: 0x3c, IncomingDir: "/home/inkpot/dev/incoming"}
 	s := NewSession(cfg)
 	s.Start()
 
@@ -52,5 +52,5 @@ L:
 }
 
 // tran /tmp/test.txt 460359517F89AE010793896EDE7D30F8 4
-// tran /tmp/12.txt D8B5305980DB239B8888439603E518B1 12000000
+// tran 12.txt D8B5305980DB239B8888439603E518B1 12000000
 // OP_PUBLICIP_REQ

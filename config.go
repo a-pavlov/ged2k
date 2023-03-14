@@ -15,4 +15,5 @@ type Config struct {
 	MaxConnectsPerSecond      int
 	MaxConnections            int
 	ServerReconnectTimeoutSec int
+	IncomingDir               string
 }

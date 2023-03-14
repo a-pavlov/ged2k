@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +38,7 @@ type Session struct {
 	transferChanPaused         chan *Transfer
 	transferResumeData         chan proto.AddTransferParameters
 	transferChanError          chan TransferError
+	transferChanClosed         chan *Transfer
 
 	statistics      Statistics
 	statReceiveChan chan StatPacket
@@ -63,6 +65,7 @@ func NewSession(config Config) *Session {
 		transferChanPaused:         make(chan *Transfer),
 		transferResumeData:         make(chan proto.AddTransferParameters),
 		transferChanError:          make(chan TransferError),
+		transferChanClosed:         make(chan *Transfer),
 		statReceiveChan:            make(chan StatPacket),
 		statSendChan:               make(chan StatPacket),
 		Stat:                       MakeStatistics(),
@@ -89,17 +92,25 @@ func (s *Session) Tick() {
 
 	lastTick := time.Time{}
 
+	stopped := false
+
 	for execute {
 		select {
 		case sc := <-s.unregisterServerConnection:
 			{
 				log.Printf("Server connection closed, reason: \"%v\"\n", sc.lastError)
 				s.serverConnection = nil
+				if stopped && len(s.peerConnections) == 0 && len(s.transfers) == 0 {
+					execute = false
+					break
+				}
+
 				if candidate != nil {
 					s.serverConnection = candidate
 					go candidate.Start(s)
 					candidate = nil
 				}
+
 			}
 		case sc := <-s.registerServerConnection:
 			{
@@ -122,6 +133,29 @@ func (s *Session) Tick() {
 				elems := strings.Split(cmd, " ")
 
 				switch elems[0] {
+				case "stop":
+					stopped = true
+					if len(s.peerConnections) == 0 && len(s.transfers) == 0 {
+						execute = false
+						break
+					}
+
+					for _, x := range s.transfers {
+						// ask transfers to do not ask for new peers and so on
+						x.Stopped = true
+						if len(s.peerConnections) == 0 {
+							go x.Stop()
+						}
+					}
+
+					// close all peer connections
+					for _, x := range s.peerConnections {
+						go x.Close(true)
+					}
+
+					if s.serverConnection != nil {
+						go s.serverConnection.Close()
+					}
 				case "hello":
 					log.Println("Hello !!!")
 				case "connect":
@@ -199,10 +233,11 @@ func (s *Session) Tick() {
 					}
 				case "tran":
 					log.Println("tran command accepted")
-					filename := elems[1]
+					name := elems[1]
 					hash := proto.String2Hash(elems[2])
 					size, err := strconv.ParseUint(elems[3], 10, 64)
 					if err == nil {
+						filename := s.configuration.IncomingDir + "/" + name
 						log.Printf(" add transfer %v to file %s\n", hash.ToString(), filename)
 						tran := NewTransfer(hash, filename, size)
 						s.transfers[hash] = tran
@@ -216,6 +251,31 @@ func (s *Session) Tick() {
 						go tran.Start(s, nil)
 					} else {
 						log.Println("Error on transfer adding", err)
+					}
+				case "restore":
+					log.Printf("restore %s\n", elems[1])
+					data, err := os.ReadFile(s.configuration.IncomingDir + "/" + elems[1] + ".rd")
+					if err != nil {
+						log.Printf("can not read resum data file %v\n", err)
+					} else {
+						parameters := proto.AddTransferParameters{}
+						sb := proto.StateBuffer{Data: data}
+						sb.Read(&parameters)
+						if sb.Error() != nil {
+							log.Printf("can not serialize add transfer parameters: %v", err)
+						} else {
+							tran := NewTransfer(parameters.Hashes.Hash, parameters.Filename.ToString(), parameters.Filesize)
+							s.transfers[parameters.Hashes.Hash] = tran
+
+							if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S'}) {
+								log.Printf("Added peer 127.0.0.1:4662\n")
+							}
+							if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4663"), SourceFlag: 'S'}) {
+								log.Printf("Added peer 127.0.0.1:4663\n")
+							}
+
+							go tran.Start(s, &parameters)
+						}
 					}
 
 				default:
@@ -394,6 +454,17 @@ func (s *Session) Tick() {
 
 			peerConnectionPacket.Connection.transfer = nil
 			peerConnectionPacket.Connection.peer = nil
+
+			if stopped && len(s.peerConnections) == 0 {
+				if len(s.transfers) == 0 {
+					execute = false
+					break
+				}
+
+				for _, x := range s.transfers {
+					go x.Stop()
+				}
+			}
 		case transfer := <-s.transferChanFinished:
 			transfer.Finished = true
 			for _, x := range s.peerConnections {
@@ -407,10 +478,18 @@ func (s *Session) Tick() {
 		case transfer := <-s.transferChanResumeDataRead:
 			transfer.ReadingResumeData = false
 		case atp := <-s.transferResumeData:
-			log.Println("Save resume data - ignore for now", atp.Filename.ToString())
+			log.Println("Save resume data", atp.Filename.ToString())
+			s.saveResumeData(atp)
 		case te := <-s.transferChanError:
 			te.transfer.LastError = te.err
 			log.Printf("Transfer %s error %v\n", te.transfer.Hash.ToString(), te.err)
+		case transfer := <-s.transferChanClosed:
+			delete(s.transfers, transfer.Hash)
+			log.Println("close transfer transfers", len(s.transfers), "peers ", len(s.peerConnections))
+			if stopped && len(s.peerConnections) == 0 && len(s.transfers) == 0 {
+				execute = false
+				break
+			}
 		}
 	}
 
@@ -418,10 +497,6 @@ func (s *Session) Tick() {
 	if e != nil {
 		log.Printf("Listener stop error %v\n", e)
 	}
-
-	//for k, _ := range s.connections {
-	//	k.conn.Close()
-	//}
 
 	log.Println("Session closed")
 }
@@ -432,20 +507,7 @@ func (s *Session) Start() {
 
 func (s *Session) Stop() {
 	log.Println("Session stop requested")
-	for _, x := range s.transfers {
-		x.Stop()
-	}
-
-	// close all peer connections
-	for _, x := range s.peerConnections {
-		x.Close(true)
-	}
-
-	if s.serverConnection != nil {
-		go s.serverConnection.Close()
-	}
-
-	close(s.comm)
+	s.comm <- "stop"
 	s.wg.Wait()
 }
 
@@ -522,14 +584,23 @@ func (s *Session) Cmd(cmd string) {
 	s.comm <- cmd
 }
 
-/*
-func (s *Session) GetPeerConnectionByEndpoint(endpoint proto.Endpoint) *PeerConnection {
-	for _, x := range s.peerConnections {
-		if x.endpoint == endpoint {
-			return x
-		}
+func (s *Session) saveResumeData(parameters proto.AddTransferParameters) {
+	data := make([]byte, parameters.Size())
+	file, err := os.OpenFile(s.configuration.IncomingDir+"/"+parameters.Hashes.Hash.ToString()+".rd", os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		log.Printf("error on create resume data file: %v\n", err)
+		return
 	}
 
-	return nil
+	defer file.Close()
+	sb := proto.StateBuffer{Data: data}
+	sb.Write(&parameters)
+	if sb.Error() != nil {
+		log.Printf("can not serialize resume data: %v\n", sb.Error())
+	}
+
+	_, err = file.Write(data)
+	if err != nil {
+		log.Printf("can not write data to file: %v\n", err)
+	}
 }
-*/
