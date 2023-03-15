@@ -215,7 +215,8 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 					pieces.SetBit(pb.block.PieceIndex)
 				} else {
 					log.Printf("Hash not match: %x expected %x\n", rp.Hash(), hashSet.PieceHashes[pb.block.PieceIndex])
-					// hash not match
+					// restore piece as no-have
+					transfer.piecePicker.RemoveDownloadingPiece(pb.block.PieceIndex)
 				}
 
 				delete(downloadedBlocks, pb.block.PieceIndex)

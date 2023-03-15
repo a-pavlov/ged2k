@@ -153,3 +153,10 @@ func CreateBitField(bitsCount int) BitField {
 	bf.ClearTrailingBits()
 	return bf
 }
+
+func CloneBitField(src BitField) BitField {
+	nbytes := make([]byte, len(src.bytes))
+	copy(nbytes, src.bytes)
+	bf := BitField{bytes: nbytes, bits: src.Bits()}
+	return bf
+}
