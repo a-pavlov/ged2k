@@ -10,12 +10,6 @@ import (
 	"golang.org/x/crypto/md4"
 )
 
-const (
-	TRANSFER_STATUS_READ_RESUME_DATA = iota
-	TRASNFER_STATUS_STAND_BY
-	TRANSFER_STATUS
-)
-
 type TransferError struct {
 	transfer *Transfer
 	err      error
@@ -93,16 +87,12 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 
 	defer file.Close()
 
-	piecesCount, _ := proto.NumPiecesAndBlocks(transfer.Size)
 	hashes := proto.HashSet{Hash: transfer.Hash, PieceHashes: make([]proto.ED2KHash, 0)}
-	downloadedBlocks := make(map[int]*proto.BitField)
 	localFilename := proto.ByteContainer(transfer.Filename)
-	pieces := proto.CreateBitField(piecesCount)
 
 	if atp != nil {
 		// restore state
 		hashes = atp.Hashes // can be empty
-		pieces = atp.Pieces // must have
 		for pieceIndex, x := range atp.DownloadedBlocks {
 			rp, ok := transfer.incomingPieces[pieceIndex]
 			if !ok {
@@ -141,8 +131,8 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			Hashes:           hashes,
 			Filename:         localFilename,
 			Filesize:         transfer.Size,
-			Pieces:           pieces,
-			DownloadedBlocks: downloadedBlocks,
+			Pieces:           transfer.piecePicker.GetPieces(),
+			DownloadedBlocks: transfer.piecePicker.GetDownloadedBlocks(),
 		}
 	}
 
@@ -179,20 +169,12 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 				file.Write(pb.data)
 				file.Sync()
 				transfer.piecePicker.FinishBlock(pb.block)
-				// need to save resume data:
-				_, ok := downloadedBlocks[pb.block.PieceIndex]
-				if !ok {
-					bf := proto.CreateBitField(proto.BLOCKS_PER_PIECE)
-					downloadedBlocks[pb.block.PieceIndex] = &bf
-				}
-
-				downloadedBlocks[pb.block.PieceIndex].SetBit(pb.block.BlockIndex)
 				s.transferResumeData <- proto.AddTransferParameters{
 					Hashes:           hashes,
 					Filename:         localFilename,
 					Filesize:         transfer.Size,
-					Pieces:           pieces,
-					DownloadedBlocks: downloadedBlocks,
+					Pieces:           transfer.piecePicker.GetPieces(),
+					DownloadedBlocks: transfer.piecePicker.GetDownloadedBlocks(),
 				}
 			} else {
 				s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("file %s seek error %v", transfer.Filename, err)}
@@ -212,20 +194,19 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 					// match
 					// need to save resume data:
 					log.Println("Hash match")
-					pieces.SetBit(pb.block.PieceIndex)
+					transfer.piecePicker.SetHave(pb.block.PieceIndex)
 				} else {
 					log.Printf("Hash not match: %x expected %x\n", rp.Hash(), hashSet.PieceHashes[pb.block.PieceIndex])
 					// restore piece as no-have
 					transfer.piecePicker.RemoveDownloadingPiece(pb.block.PieceIndex)
 				}
 
-				delete(downloadedBlocks, pb.block.PieceIndex)
 				s.transferResumeData <- proto.AddTransferParameters{
 					Hashes:           hashes,
 					Filename:         localFilename,
 					Filesize:         transfer.Size,
-					Pieces:           pieces,
-					DownloadedBlocks: downloadedBlocks,
+					Pieces:           transfer.piecePicker.GetPieces(),
+					DownloadedBlocks: transfer.piecePicker.GetDownloadedBlocks(),
 				}
 
 				wasFinished := transfer.piecePicker.IsFinished()

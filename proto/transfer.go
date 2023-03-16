@@ -38,12 +38,12 @@ type AddTransferParameters struct {
 	Filename         ByteContainer
 	Filesize         uint64
 	Pieces           BitField
-	DownloadedBlocks map[int]*BitField
+	DownloadedBlocks map[int]BitField
 }
 
 func (atp *AddTransferParameters) Get(sb *StateBuffer) *StateBuffer {
 	sb.Read(&atp.Hashes).Read(&atp.Filename).Read(&atp.Filesize).Read(&atp.Pieces)
-	atp.DownloadedBlocks = make(map[int]*BitField)
+	atp.DownloadedBlocks = make(map[int]BitField)
 	downloadedBlocksSize := int(sb.ReadUint16())
 	if sb.Error() == nil {
 		if downloadedBlocksSize > MAX_ELEMS {
@@ -56,7 +56,7 @@ func (atp *AddTransferParameters) Get(sb *StateBuffer) *StateBuffer {
 				pieceIndex := int(sb.ReadUint32())
 				bf := BitField{}
 				sb.Read(&bf)
-				atp.DownloadedBlocks[pieceIndex] = &bf
+				atp.DownloadedBlocks[pieceIndex] = bf
 			}
 		}
 	}
@@ -95,6 +95,6 @@ func CreateAddTransferParameters(hash ED2KHash, size uint64, filename string) Ad
 		Filesize:         size,
 		Filename:         String2ByteContainer(filename),
 		Pieces:           CreateBitField(piecesCount),
-		DownloadedBlocks: make(map[int]*BitField),
+		DownloadedBlocks: make(map[int]BitField),
 	}
 }

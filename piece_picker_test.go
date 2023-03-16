@@ -42,6 +42,9 @@ func TestPiecePicker_PickPiecesTrivial(t *testing.T) {
 
 func Test_PiecePickerLessOneBlock(t *testing.T) {
 	pp := NewPiecePicker(1, 1)
+	if pp.IsFinished() {
+		t.Error("Wrong finished state")
+	}
 	peer := Peer{endpoint: proto.EndpointFromString("192.168.11.11:7899"), Speed: PEER_SPEED_SLOW}
 	blocks := pp.PickPieces(3, &peer)
 	if len(blocks) != 1 {
@@ -50,7 +53,14 @@ func Test_PiecePickerLessOneBlock(t *testing.T) {
 		t.Errorf("Requested block has incorrect piece index %d or block index %d", blocks[0].PieceIndex, blocks[0].BlockIndex)
 	}
 
+	pp.FinishBlock(blocks[0])
+	if pp.IsFinished() {
+		t.Error("Wrong finished state")
+	}
 	pp.SetHave(0)
+	if !pp.IsFinished() {
+		t.Error("Wrong finished state")
+	}
 	if !pp.IsFinished() {
 		t.Errorf("Piece picker was not finished")
 	}

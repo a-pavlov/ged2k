@@ -41,6 +41,14 @@ func (dp *DownloadingPiece) IsBlockFinished(blockIndex int) bool {
 	return dp.blocksFinished.GetBit(blockIndex)
 }
 
+func (dp *DownloadingPiece) NumHave() int {
+	return dp.blocksFinished.Count()
+}
+
+func (db *DownloadingPiece) NumBlocks() int {
+	return db.blocksFinished.Bits()
+}
+
 func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGame bool) []proto.PieceBlock {
 	res := []proto.PieceBlock{}
 	// not end game mode and have no free blocks

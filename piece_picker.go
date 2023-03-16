@@ -100,10 +100,6 @@ func (pp *PiecePicker) FinishBlock(pieceBlock proto.PieceBlock) {
 	}
 }
 
-func (pp *PiecePicker) NumHave() int {
-	return pp.pieces.Count() - len(pp.downloadingPieces)
-}
-
 func (pp *PiecePicker) RemoveDownloadingPiece(pieceIndex int) bool {
 	for i, x := range pp.downloadingPieces {
 		if x.pieceIndex == pieceIndex {
@@ -118,7 +114,7 @@ func (pp *PiecePicker) RemoveDownloadingPiece(pieceIndex int) bool {
 
 func (pp *PiecePicker) SetHave(pieceIndex int) {
 	if !pp.pieces.GetBit(pieceIndex) {
-		panic("set have to not-requested index")
+		panic("set have to already finished piece")
 	}
 
 	for i, x := range pp.downloadingPieces {
@@ -130,14 +126,31 @@ func (pp *PiecePicker) SetHave(pieceIndex int) {
 }
 
 func (pp *PiecePicker) IsFinished() bool {
-	return pp.NumHave() == pp.pieces.Bits()
+	return pp.pieces.Count() == pp.pieces.Bits() && len(pp.downloadingPieces) == 0
 }
 
 func (pp *PiecePicker) ApplyResumeData(atp *proto.AddTransferParameters) {
 	pp.pieces = atp.Pieces
 	for pieceIndex, x := range atp.DownloadedBlocks {
-		pp.downloadingPieces = append(pp.downloadingPieces, NewDownloadingPieceParams(pieceIndex, *x))
+		pp.downloadingPieces = append(pp.downloadingPieces, NewDownloadingPieceParams(pieceIndex, x))
 	}
+}
+
+func (pp *PiecePicker) GetPieces() proto.BitField {
+	res := proto.CloneBitField(pp.pieces)
+	for _, x := range pp.downloadingPieces {
+		res.ClearBit(x.pieceIndex)
+	}
+	return res
+}
+
+func (pp *PiecePicker) GetDownloadedBlocks() map[int]proto.BitField {
+	res := make(map[int]proto.BitField)
+	for _, x := range pp.downloadingPieces {
+		res[x.pieceIndex] = proto.CloneBitField(x.blocksFinished)
+	}
+
+	return res
 }
 
 func remove(s []*DownloadingPiece, i int) []*DownloadingPiece {
