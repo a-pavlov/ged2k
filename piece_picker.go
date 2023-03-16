@@ -119,6 +119,9 @@ func (pp *PiecePicker) SetHave(pieceIndex int) {
 
 	for i, x := range pp.downloadingPieces {
 		if x.pieceIndex == pieceIndex {
+			if x.NumBlocks() != x.NumHave() {
+				panic("set piece have when not all downloading blocks are finished")
+			}
 			pp.downloadingPieces = remove(pp.downloadingPieces, i)
 			break
 		}

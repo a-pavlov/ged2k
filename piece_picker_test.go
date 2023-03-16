@@ -227,3 +227,43 @@ func Test_PiecePickerMultipleDownloaders(t *testing.T) {
 		}
 	}
 }
+
+func Test_PiecePieckerToAtp(t *testing.T) {
+	pp := NewPiecePicker(2, 5)
+	if pp.IsFinished() {
+		t.Error("Wrong finished state")
+	}
+	peer := Peer{endpoint: proto.EndpointFromString("192.168.11.11:7899"), Speed: PEER_SPEED_SLOW}
+	blocks := pp.PickPieces(55, &peer)
+	if len(blocks) != 55 {
+		t.Errorf("Blocks count requested in not correct: %v", len(blocks))
+	}
+
+	pieces := pp.GetPieces()
+	if pieces.Count() != 0 {
+		t.Errorf("Pieces have not correct %d", pieces.Count())
+	}
+
+	for i := 0; i < proto.BLOCKS_PER_PIECE; i++ {
+		pp.FinishBlock(proto.PieceBlock{PieceIndex: 0, BlockIndex: i})
+	}
+
+	pp.FinishBlock(proto.PieceBlock{PieceIndex: 1, BlockIndex: 1})
+	pp.FinishBlock(proto.PieceBlock{PieceIndex: 1, BlockIndex: 2})
+	pp.FinishBlock(proto.PieceBlock{PieceIndex: 1, BlockIndex: 3})
+
+	pp.SetHave(0)
+	pieces2 := pp.GetPieces()
+	if pieces2.Count() != 1 || !pieces2.GetBit(0) {
+		t.Errorf("Pieces have incorrect")
+	}
+
+	pp.FinishBlock(proto.PieceBlock{PieceIndex: 1, BlockIndex: 4})
+	pp.FinishBlock(proto.PieceBlock{PieceIndex: 1, BlockIndex: 0})
+	pp.SetHave(1)
+
+	pieces3 := pp.GetPieces()
+	if pieces3.Count() != 2 || !pieces3.GetBit(0) || !pieces3.GetBit(1) {
+		t.Errorf("Pieces have incorrect")
+	}
+}
