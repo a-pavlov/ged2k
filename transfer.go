@@ -76,9 +76,28 @@ func (transfer *Transfer) AttachPeer(connection *PeerConnection) {
 }
 
 func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
+	execute := true
+	if atp != nil && atp.Pieces.Count() == atp.Pieces.Bits() {
+		log.Printf("transfer %s is finished\n", transfer.Hash.ToString())
+		// transfer finished
+		s.transferChanFinished <- transfer
+		s.transferChanResumeDataRead <- transfer
+		for execute {
+			select {
+			case _, ok := <-transfer.cmdChan:
+				if !ok {
+					log.Println("Transfer exit requested")
+					execute = false
+				}
+			}
+		}
+
+		s.transferChanClosed <- transfer
+		return
+	}
 
 	var hashSet *proto.HashSet
-	file, err := os.OpenFile(transfer.Filename, os.O_WRONLY|os.O_RDONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(transfer.Filename, os.O_RDWR|os.O_CREATE, 0666)
 
 	if err != nil {
 		s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("can not open file %s with error %v", transfer.Filename, err)}
@@ -123,6 +142,9 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 		}
 
+		// temporary
+		transfer.piecePicker = FromResumeData(atp)
+
 		// report resume data read is finished
 		s.transferChanResumeDataRead <- transfer
 	} else {
@@ -136,7 +158,6 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 		}
 	}
 
-	execute := true
 	log.Println("Transfer cycle in running")
 	for execute {
 		select {

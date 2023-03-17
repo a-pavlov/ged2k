@@ -132,18 +132,23 @@ func (pp *PiecePicker) IsFinished() bool {
 	return pp.pieces.Count() == pp.pieces.Bits() && len(pp.downloadingPieces) == 0
 }
 
-func (pp *PiecePicker) ApplyResumeData(atp *proto.AddTransferParameters) {
-	pp.pieces = atp.Pieces
+func FromResumeData(atp *proto.AddTransferParameters) *PiecePicker {
+	pp := PiecePicker{}
+	pp.pieces = proto.CloneBitField(atp.Pieces)
 	for pieceIndex, x := range atp.DownloadedBlocks {
-		pp.downloadingPieces = append(pp.downloadingPieces, NewDownloadingPieceParams(pieceIndex, x))
+		downloadingPiece := pp.getDownloadingPiece(pieceIndex)
+		if downloadingPiece == nil {
+			pp.downloadingPieces = append(pp.downloadingPieces, NewDownloadingPieceParams(pieceIndex, x))
+		} else {
+			panic("piece index many times!!!")
+		}
 	}
+
+	return &pp
 }
 
 func (pp *PiecePicker) GetPieces() proto.BitField {
 	res := proto.CloneBitField(pp.pieces)
-	for _, x := range pp.downloadingPieces {
-		res.ClearBit(x.pieceIndex)
-	}
 	return res
 }
 

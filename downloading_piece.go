@@ -67,7 +67,7 @@ func (dp *DownloadingPiece) PickBlock(requiredBlocksCount int, peer *Peer, endGa
 
 		if endGame && dp.IsBlockRequested(i) && !dp.IsBlockFinished(i) {
 			// re-request already requested blocks in end-game mode if new peer is faster than previous
-			if dp.blocks[i].downloadersCount < 2 && dp.blocks[i].lastDownloader.Speed < peer.Speed && peer != dp.blocks[i].lastDownloader {
+			if dp.blocks[i].downloadersCount < 2 && (dp.blocks[i].lastDownloader == nil || (dp.blocks[i].lastDownloader.Speed < peer.Speed && peer != dp.blocks[i].lastDownloader)) {
 				dp.blocksRequested.SetBit(i)
 				dp.blocks[i].lastDownloader = peer
 				dp.blocks[i].downloadersCount++

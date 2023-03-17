@@ -240,8 +240,8 @@ func Test_PiecePieckerToAtp(t *testing.T) {
 	}
 
 	pieces := pp.GetPieces()
-	if pieces.Count() != 0 {
-		t.Errorf("Pieces have not correct %d", pieces.Count())
+	if pieces.Count() != 2 {
+		t.Errorf("Pieces \"have\" not correct %d", pieces.Count())
 	}
 
 	for i := 0; i < proto.BLOCKS_PER_PIECE; i++ {
@@ -254,7 +254,7 @@ func Test_PiecePieckerToAtp(t *testing.T) {
 
 	pp.SetHave(0)
 	pieces2 := pp.GetPieces()
-	if pieces2.Count() != 1 || !pieces2.GetBit(0) {
+	if pieces2.Count() != 2 || !pieces2.GetBit(0) {
 		t.Errorf("Pieces have incorrect")
 	}
 
@@ -266,4 +266,67 @@ func Test_PiecePieckerToAtp(t *testing.T) {
 	if pieces3.Count() != 2 || !pieces3.GetBit(0) || !pieces3.GetBit(1) {
 		t.Errorf("Pieces have incorrect")
 	}
+}
+
+func Test_PiecePickerRestoreAtp(t *testing.T) {
+	p2 := proto.CreateBitField(proto.BLOCKS_PER_PIECE)
+	p3 := proto.CreateBitField(proto.BLOCKS_PER_PIECE)
+	p10 := proto.CreateBitField(1)
+	p2.SetBit(0)
+	p2.SetBit(1)
+	p2.SetBit(2)
+	p2.SetBit(10)
+
+	p3.SetBit(1)
+	p3.SetBit(2)
+	p10.SetBit(0)
+
+	atp := proto.AddTransferParameters{
+		Filename:         proto.String2ByteContainer("filename.txt"),
+		Pieces:           proto.CreateBitField(11),
+		Filesize:         10*proto.PIECE_SIZE_UINT64 + 101,
+		DownloadedBlocks: map[int]proto.BitField{2: p2, 3: p3, 10: p10}}
+	atp.Pieces.SetBit(0)
+	atp.Pieces.SetBit(1)
+
+	pp := FromResumeData(&atp)
+	if len(pp.downloadingPieces) != 3 {
+		t.Errorf("downloading piece count is incorrect: %d", len(pp.downloadingPieces))
+	}
+
+	if pp.IsFinished() {
+		t.Error("picker is finished - wrong state")
+	}
+
+	dp2 := pp.getDownloadingPiece(2)
+	dp3 := pp.getDownloadingPiece(3)
+	dp10 := pp.getDownloadingPiece(10)
+	if dp2 == nil || dp3 == nil || dp10 == nil {
+		t.Errorf("downloaded blocks state wrong: %v %v %v", dp2, dp3, dp10)
+	}
+
+	dp := []*DownloadingPiece{nil, nil, dp2, dp3}
+	indexes := [][]int{{}, {}, {0, 1, 2, 10}, {1, 2}}
+	for i := range indexes {
+		for bi := 0; bi < proto.BLOCKS_PER_PIECE; bi++ {
+			if len(indexes[i]) != 0 {
+				mustSet := false
+				for _, j := range indexes[i] {
+					if bi == j {
+						mustSet = true
+						if !dp[i].IsBlockRequested(bi) || !dp[i].IsBlockRequested(bi) {
+							t.Errorf("Piece %d block %d not finished/requested", i, bi)
+						}
+					}
+				}
+
+				if !mustSet {
+					if dp[i].IsBlockRequested(bi) || dp[i].IsBlockRequested(bi) {
+						t.Errorf("Piece %d block %d is finished/requested", i, bi)
+					}
+				}
+			}
+		}
+	}
+
 }
