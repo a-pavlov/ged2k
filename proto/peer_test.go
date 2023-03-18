@@ -132,3 +132,30 @@ func Test_HashSetCalculation(t *testing.T) {
 		}
 	}
 }
+
+func Test_MiscOptions(t *testing.T) {
+	mo := MiscOptions{}
+	mo.UnicodeSupport = 1
+	mo.DataCompVer = 1        // support data compression
+	mo.NoViewSharedFiles = 1  // temp value
+	mo.SourceExchange1Ver = 0 // SOURCE_EXCHG_LEVEL - important value
+
+	num := mo.AsUint32()
+	mo2 := MiscOptions{}
+	mo2.Assign(num)
+	if mo2.UnicodeSupport != 1 {
+		t.Error("Unicode support incorrect")
+	}
+
+	if mo2.DataCompVer != 1 {
+		t.Error("Data comp version incorrect")
+	}
+
+	if mo2.NoViewSharedFiles != 1 {
+		t.Error("No view shared files incorrect")
+	}
+
+	if mo2.SourceExchange1Ver != 0 {
+		t.Error("Source files exchange ver incorrect")
+	}
+}

@@ -234,12 +234,12 @@ type MiscOptions struct {
 
 func (mo MiscOptions) AsUint32() uint32 {
 	return (mo.AichVersion << ((4 * 7) + 1)) |
-		(mo.UnicodeSupport << 4 * 7) |
-		(mo.UdpVer << 4 * 6) |
-		(mo.DataCompVer << 4 * 5) |
-		(mo.SupportSecIdent << 4 * 4) |
-		(mo.SourceExchange1Ver << 4 * 3) |
-		(mo.ExtendedRequestsVer << 4 * 2) |
+		(mo.UnicodeSupport << (4 * 7)) |
+		(mo.UdpVer << (4 * 6)) |
+		(mo.DataCompVer << (4 * 5)) |
+		(mo.SupportSecIdent << (4 * 4)) |
+		(mo.SourceExchange1Ver << (4 * 3)) |
+		(mo.ExtendedRequestsVer << (4 * 2)) |
 		(mo.AcceptCommentVer << 4) |
 		(mo.NoViewSharedFiles << 2) |
 		(mo.MultiPacket << 1) |
@@ -248,12 +248,12 @@ func (mo MiscOptions) AsUint32() uint32 {
 
 func (mo *MiscOptions) Assign(value uint32) {
 	mo.AichVersion = (value >> (4*7 + 1)) & 0x07
-	mo.UnicodeSupport = (value >> 4 * 7) & 0x01
-	mo.UdpVer = (value >> 4 * 6) & 0x0f
-	mo.DataCompVer = (value >> 4 * 5) & 0x0f
-	mo.SupportSecIdent = (value >> 4 * 4) & 0x0f
-	mo.SourceExchange1Ver = (value >> 4 * 3) & 0x0f
-	mo.ExtendedRequestsVer = (value >> 4 * 2) & 0x0f
+	mo.UnicodeSupport = (value >> (4 * 7)) & 0x01
+	mo.UdpVer = (value >> (4 * 6)) & 0x0f
+	mo.DataCompVer = (value >> (4 * 5)) & 0x0f
+	mo.SupportSecIdent = (value >> (4 * 4)) & 0x0f
+	mo.SourceExchange1Ver = (value >> (4 * 3)) & 0x0f
+	mo.ExtendedRequestsVer = (value >> (4 * 2)) & 0x0f
 	mo.AcceptCommentVer = (value >> 4) & 0x0f
 	mo.NoViewSharedFiles = (value >> 2) & 0x01
 	mo.MultiPacket = (value >> 1) & 0x01

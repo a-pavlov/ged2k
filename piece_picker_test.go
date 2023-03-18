@@ -7,7 +7,7 @@ import (
 )
 
 func TestPiecePicker_PickPiecesTrivial(t *testing.T) {
-	pp := NewPiecePicker(7, 4)
+	pp := CreatePiecePicker(7, 4)
 	peer := Peer{endpoint: proto.EndpointFromString("192.168.11.11:7899"), Speed: PEER_SPEED_SLOW}
 	for i := 0; i < 101; i++ {
 		blocks := pp.PickPieces(3, &peer)
@@ -41,7 +41,7 @@ func TestPiecePicker_PickPiecesTrivial(t *testing.T) {
 }
 
 func Test_PiecePickerLessOneBlock(t *testing.T) {
-	pp := NewPiecePicker(1, 1)
+	pp := CreatePiecePicker(1, 1)
 	if pp.IsFinished() {
 		t.Error("Wrong finished state")
 	}
@@ -229,7 +229,7 @@ func Test_PiecePickerMultipleDownloaders(t *testing.T) {
 }
 
 func Test_PiecePieckerToAtp(t *testing.T) {
-	pp := NewPiecePicker(2, 5)
+	pp := CreatePiecePicker(2, 5)
 	if pp.IsFinished() {
 		t.Error("Wrong finished state")
 	}

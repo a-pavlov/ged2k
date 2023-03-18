@@ -89,6 +89,10 @@ func (atp AddTransferParameters) Size() int {
 	return sz
 }
 
+func (atp AddTransferParameters) WantMoreData() bool {
+	return atp.Pieces.Bits() != atp.Pieces.Count() || len(atp.DownloadedBlocks) > 0
+}
+
 func CreateAddTransferParameters(hash ED2KHash, size uint64, filename string) AddTransferParameters {
 	piecesCount, _ := NumPiecesAndBlocks(size)
 	return AddTransferParameters{Hashes: HashSet{Hash: hash, PieceHashes: make([]ED2KHash, 0)},

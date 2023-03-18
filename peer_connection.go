@@ -298,6 +298,7 @@ M:
 				if x.block == block {
 					compressedData := make([]byte, cp.CompressedDataLength)
 					recvBytes, err := io.ReadFull(peerConnection.connection, compressedData)
+					log.Printf("compressed recv bytes %d\n", recvBytes)
 
 					if err != nil {
 						fmt.Printf("error on read compressed part %v\n", err)
@@ -312,7 +313,8 @@ M:
 					z, err := zlib.NewReader(b)
 					if err != nil {
 						fmt.Printf("Error on un-compression %v\n", err)
-						return
+						lastError = err
+						break M
 					}
 
 					defer z.Close()
@@ -324,12 +326,13 @@ M:
 						fmt.Printf("Error on read un-compression %v\n", err)
 						break M
 					} else {
+						log.Printf("receive %d uncompressed bytes\n", recvBytes)
 						// already taken in account above
 					}
 
 					if x.region.IsEmpty() {
 						peerConnection.transfer.dataChan <- x
-						RemovePendingBlock(peerConnection.requestedBlocks, i)
+						peerConnection.requestedBlocks = RemovePendingBlock(peerConnection.requestedBlocks, i)
 					}
 
 					break

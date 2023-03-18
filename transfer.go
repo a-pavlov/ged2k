@@ -29,7 +29,6 @@ type Transfer struct {
 	LastError              error
 
 	policy                Policy
-	piecePicker           *PiecePicker
 	cmdChan               chan string
 	dataChan              chan *PendingBlock
 	sourcesChan           chan proto.FoundFileSources
@@ -53,21 +52,9 @@ func NewTransfer(hash proto.ED2KHash, filename string, size uint64) *Transfer {
 		hashSetChan:           make(chan *proto.HashSet),
 		abortPendingBlockChan: make(chan AbortPendingBlock),
 		policy:                MakePolicy(MAX_PEER_LIST_SIZE),
-		piecePicker:           NewPiecePicker(proto.NumPiecesAndBlocks(size)),
 		incomingPieces:        make(map[int]*ReceivingPiece),
 		Stat:                  MakeStatistics(),
 	}
-}
-
-func removePeerConnection(peerConnection *PeerConnection, pc []*PeerConnection) []*PeerConnection {
-	var res []*PeerConnection
-	for _, x := range pc {
-		if x != peerConnection {
-			res = append(res, x)
-		}
-	}
-
-	return res
 }
 
 func (transfer *Transfer) AttachPeer(connection *PeerConnection) {
@@ -75,9 +62,9 @@ func (transfer *Transfer) AttachPeer(connection *PeerConnection) {
 	connection.transfer = transfer
 }
 
-func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
+func (transfer *Transfer) StartFinished(s *Session, atp *proto.AddTransferParameters) {
 	execute := true
-	if atp != nil && atp.Pieces.Count() == atp.Pieces.Bits() {
+	if atp != nil && !atp.WantMoreData() {
 		log.Printf("transfer %s is finished\n", transfer.Hash.ToString())
 		// transfer finished
 		s.transferChanFinished <- transfer
@@ -95,19 +82,26 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 		s.transferChanClosed <- transfer
 		return
 	}
+}
+
+func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
+	execute := true
+	var lastError error
 
 	var hashSet *proto.HashSet
-	file, err := os.OpenFile(transfer.Filename, os.O_RDWR|os.O_CREATE, 0666)
+	file, openFileError := os.OpenFile(transfer.Filename, os.O_RDWR|os.O_CREATE, 0666)
 
-	if err != nil {
-		s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("can not open file %s with error %v", transfer.Filename, err)}
-		return
+	if openFileError != nil {
+		lastError = openFileError
+		s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("can not open file %s with error %v", transfer.Filename, openFileError)}
+	} else {
+		defer file.Close()
 	}
-
-	defer file.Close()
 
 	hashes := proto.HashSet{Hash: transfer.Hash, PieceHashes: make([]proto.ED2KHash, 0)}
 	localFilename := proto.ByteContainer(transfer.Filename)
+
+	var piecePicker PiecePicker
 
 	if atp != nil {
 		// restore state
@@ -126,13 +120,15 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 					pendingBlock := PendingBlock{block: pb, data: make([]byte, pbSize)}
 					_, err := file.Seek(int64(pb.Start()), 0)
 					if err != nil {
-						s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("seek in file %s to position %d failed %v", transfer.Filename, pb.Start(), err)}
-						return
+						lastError = fmt.Errorf("seek in file %s to position %d failed %v", transfer.Filename, pb.Start(), err)
+						s.transferChanError <- TransferError{transfer: transfer, err: lastError}
+						break
 					} else {
 						n, err := file.Read(pendingBlock.data)
 						if err != nil || n != len(pendingBlock.data) {
-							s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("can not read block %s from file %s with error %v", pb.ToString(), transfer.Filename, err)}
-							return
+							lastError = fmt.Errorf("can not read block %s from file %s with error %v", pb.ToString(), transfer.Filename, err)
+							s.transferChanError <- TransferError{transfer: transfer, err: lastError}
+							break
 						} else {
 							rp.InsertBlock(&pendingBlock)
 							log.Printf("%s: block %s data size: %d was restored\n", transfer.Filename, pb.ToString(), len(pendingBlock.data))
@@ -142,19 +138,19 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 		}
 
-		// temporary
-		transfer.piecePicker = FromResumeData(atp)
+		piecePicker = FromResumeData(atp)
 
 		// report resume data read is finished
 		s.transferChanResumeDataRead <- transfer
 	} else {
+		piecePicker = CreatePiecePicker(proto.NumPiecesAndBlocks(transfer.Size))
 		// create initial add transfer parameters here
 		s.transferResumeData <- proto.AddTransferParameters{
 			Hashes:           hashes,
 			Filename:         localFilename,
 			Filesize:         transfer.Size,
-			Pieces:           transfer.piecePicker.GetPieces(),
-			DownloadedBlocks: transfer.piecePicker.GetDownloadedBlocks(),
+			Pieces:           piecePicker.GetPieces(),
+			DownloadedBlocks: piecePicker.GetDownloadedBlocks(),
 		}
 	}
 
@@ -169,7 +165,7 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 		case hashSet = <-transfer.hashSetChan:
 		case apb := <-transfer.abortPendingBlockChan:
 			log.Printf("abort block %s\n", apb.pendingBlock.block.ToString())
-			transfer.piecePicker.AbortBlock(apb.pendingBlock.block, apb.peer)
+			piecePicker.AbortBlock(apb.pendingBlock.block, apb.peer)
 		case pb := <-transfer.dataChan:
 			rp, ok := transfer.incomingPieces[pb.block.PieceIndex]
 			if !ok {
@@ -186,25 +182,37 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 
 			// write block to the file in advance
 			_, err := file.Seek(int64(pb.block.Start()), 0)
-			if err == nil {
-				file.Write(pb.data)
-				file.Sync()
-				transfer.piecePicker.FinishBlock(pb.block)
-				s.transferResumeData <- proto.AddTransferParameters{
-					Hashes:           hashes,
-					Filename:         localFilename,
-					Filesize:         transfer.Size,
-					Pieces:           transfer.piecePicker.GetPieces(),
-					DownloadedBlocks: transfer.piecePicker.GetDownloadedBlocks(),
-				}
-			} else {
-				s.transferChanError <- TransferError{transfer: transfer, err: fmt.Errorf("file %s seek error %v", transfer.Filename, err)}
-				execute = false
+			if err != nil {
+				lastError = err
+				s.transferChanError <- TransferError{transfer: transfer, err: lastError}
 				break
 			}
 
+			_, err = file.Write(pb.data)
+			if err != nil {
+				lastError = err
+				s.transferChanError <- TransferError{transfer: transfer, err: lastError}
+				break
+			}
+
+			err = file.Sync()
+			if err != nil {
+				lastError = err
+				s.transferChanError <- TransferError{transfer: transfer, err: lastError}
+				break
+			}
+
+			piecePicker.FinishBlock(pb.block)
+			s.transferResumeData <- proto.AddTransferParameters{
+				Hashes:           hashes,
+				Filename:         localFilename,
+				Filesize:         transfer.Size,
+				Pieces:           piecePicker.GetPieces(),
+				DownloadedBlocks: piecePicker.GetDownloadedBlocks(),
+			}
+
 			// piece completely downloaded
-			if len(rp.blocks) == transfer.piecePicker.BlocksInPiece(pb.block.PieceIndex) {
+			if len(rp.blocks) == piecePicker.BlocksInPiece(pb.block.PieceIndex) {
 				log.Println("Ready to hash")
 				// check hash here
 				if hashSet == nil {
@@ -215,25 +223,25 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 					// match
 					// need to save resume data:
 					log.Println("Hash match")
-					transfer.piecePicker.SetHave(pb.block.PieceIndex)
+					piecePicker.SetHave(pb.block.PieceIndex)
 				} else {
 					log.Printf("Hash not match: %x expected %x\n", rp.Hash(), hashSet.PieceHashes[pb.block.PieceIndex])
 					// restore piece as no-have
-					transfer.piecePicker.RemoveDownloadingPiece(pb.block.PieceIndex)
+					piecePicker.RemoveDownloadingPiece(pb.block.PieceIndex)
 				}
 
 				s.transferResumeData <- proto.AddTransferParameters{
 					Hashes:           hashes,
 					Filename:         localFilename,
 					Filesize:         transfer.Size,
-					Pieces:           transfer.piecePicker.GetPieces(),
-					DownloadedBlocks: transfer.piecePicker.GetDownloadedBlocks(),
+					Pieces:           piecePicker.GetPieces(),
+					DownloadedBlocks: piecePicker.GetDownloadedBlocks(),
 				}
 
-				wasFinished := transfer.piecePicker.IsFinished()
-				transfer.piecePicker.SetHave(pb.block.PieceIndex)
+				wasFinished := piecePicker.IsFinished()
+				piecePicker.SetHave(pb.block.PieceIndex)
 				delete(transfer.incomingPieces, pb.block.PieceIndex)
-				if !wasFinished && transfer.piecePicker.IsFinished() {
+				if !wasFinished && piecePicker.IsFinished() {
 					// disconnect all peers
 					// status finished
 					// need save resume data
@@ -244,9 +252,15 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 
 		case peerConnection := <-transfer.peerConnChan:
+			if lastError != nil {
+				log.Println("Ready to download file - transfer error, close")
+				peerConnection.Close(true)
+				break
+			}
+
 			log.Println("Ready to download file")
 			//if peerConnection.peer == nil
-			blocks := transfer.piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
+			blocks := piecePicker.PickPieces(proto.REQUEST_QUEUE_SIZE, peerConnection.peer)
 			req := proto.RequestParts64{Hash: peerConnection.transfer.Hash}
 			for i, x := range blocks {
 				// add piece as incoming to the transfer
@@ -268,6 +282,7 @@ func (transfer *Transfer) Start(s *Session, atp *proto.AddTransferParameters) {
 			}
 		}
 	}
+
 	s.transferChanClosed <- transfer
 }
 

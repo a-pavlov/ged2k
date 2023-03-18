@@ -12,8 +12,8 @@ type PiecePicker struct {
 	pieces            proto.BitField
 }
 
-func NewPiecePicker(pieceCount int, blocksInLastPiece int) *PiecePicker {
-	return &PiecePicker{BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieces: proto.CreateBitField(pieceCount)}
+func CreatePiecePicker(pieceCount int, blocksInLastPiece int) PiecePicker {
+	return PiecePicker{BlocksInLastPiece: blocksInLastPiece, downloadingPieces: []*DownloadingPiece{}, pieces: proto.CreateBitField(pieceCount)}
 }
 
 func (pp PiecePicker) BlocksInPiece(pieceIndex int) int {
@@ -132,7 +132,7 @@ func (pp *PiecePicker) IsFinished() bool {
 	return pp.pieces.Count() == pp.pieces.Bits() && len(pp.downloadingPieces) == 0
 }
 
-func FromResumeData(atp *proto.AddTransferParameters) *PiecePicker {
+func FromResumeData(atp *proto.AddTransferParameters) PiecePicker {
 	pp := PiecePicker{}
 	pp.pieces = proto.CloneBitField(atp.Pieces)
 	for pieceIndex, x := range atp.DownloadedBlocks {
@@ -144,7 +144,7 @@ func FromResumeData(atp *proto.AddTransferParameters) *PiecePicker {
 		}
 	}
 
-	return &pp
+	return pp
 }
 
 func (pp *PiecePicker) GetPieces() proto.BitField {

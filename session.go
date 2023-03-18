@@ -267,14 +267,19 @@ func (s *Session) Tick() {
 							tran := NewTransfer(parameters.Hashes.Hash, parameters.Filename.ToString(), parameters.Filesize)
 							s.transfers[parameters.Hashes.Hash] = tran
 
-							if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S'}) {
-								log.Printf("Added peer 127.0.0.1:4662\n")
-							}
-							if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4663"), SourceFlag: 'S'}) {
-								log.Printf("Added peer 127.0.0.1:4663\n")
-							}
+							if parameters.WantMoreData() {
 
-							go tran.Start(s, &parameters)
+								if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4662"), SourceFlag: 'S'}) {
+									log.Printf("Added peer 127.0.0.1:4662\n")
+								}
+								if tran.policy.AddPeer(&Peer{endpoint: proto.EndpointFromString("127.0.0.1:4663"), SourceFlag: 'S'}) {
+									log.Printf("Added peer 127.0.0.1:4663\n")
+								}
+
+								go tran.Start(s, &parameters)
+							} else {
+								go tran.StartFinished(s, &parameters)
+							}
 						}
 					}
 
