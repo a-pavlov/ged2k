@@ -1,0 +1,18 @@
+version: "3"
+
+services:
+  app:
+    image: amule:latest
+    build: .
+    environment:
+      - DISPLAY=${DISPLAY}
+    ports:
+      - "4711:4711" # web ui
+      - "4712:4712" # remote gui, webserver, cmd ...
+      - "4662:4662" # ed2k tcp
+      - "4665:4665/udp" # ed2k global search udp (tcp port +3)
+      - "4672:4672/udp" # ed2k udp
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /home/inkpot/dev/user:/home/user
+    network_mode: host
