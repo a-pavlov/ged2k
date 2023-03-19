@@ -119,7 +119,6 @@ func (peerConnection *PeerConnection) Start(s *Session) {
 	pc := proto.PacketCombiner{}
 	var lastError error = nil
 
-M:
 	for {
 		ph, packetBytes, err := pc.Read(peerConnection.connection)
 
@@ -145,8 +144,6 @@ M:
 			// obtain peer information
 			helloAnswer := s.CreateHelloAnswer()
 			peerConnection.SendPacket(s, proto.OP_EDONKEYPROT, proto.OP_HELLOANSWER, &helloAnswer)
-			// send hello answer
-			// send file request
 		case ph.Packet == proto.OP_HELLOANSWER:
 			log.Println("Peer connection: HELLO_ANSWER")
 			helloAnswer := proto.HelloAnswer{}
@@ -154,11 +151,9 @@ M:
 			if sb.Error() != nil {
 				lastError = sb.Error()
 				break
-			} else {
-				peerConnection.SendPacket(s, proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 			}
-		// req filename
-		//peerConnection.SendPacket(proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
+
+			peerConnection.SendPacket(s, proto.OP_EDONKEYPROT, proto.OP_REQUESTFILENAME, &peerConnection.transfer.Hash)
 		case ph.Packet == proto.OP_PUBLICIP_REQ && ph.Protocol == proto.OP_EMULEPROT:
 			log.Println("Public IP request has been received")
 			ep, err := proto.FromString("192.168.111.11:9999")
@@ -173,10 +168,10 @@ M:
 			if sb.Error() != nil {
 				lastError = sb.Error()
 				break
-			} else {
-				log.Println("Received filename answer", fa.Name.ToString())
-				peerConnection.SendPacket(s, proto.OP_EDONKEYPROT, proto.OP_SETREQFILEID, &peerConnection.transfer.Hash)
 			}
+
+			log.Println("Received filename answer", fa.Name.ToString())
+			peerConnection.SendPacket(s, proto.OP_EDONKEYPROT, proto.OP_SETREQFILEID, &peerConnection.transfer.Hash)
 		case ph.Packet == proto.OP_CANCELTRANSFER:
 			// cancel transfer received
 			// sent OP_REQUESTFILENAME
@@ -189,9 +184,9 @@ M:
 				lastError = sb.Error()
 				log.Println("Error on file status answer", sb.Error())
 				break
-			} else {
-				log.Println("File status received, bits:", fs.BF.Bits(), "count", fs.BF.Count())
 			}
+
+			log.Println("File status received, bits:", fs.BF.Bits(), "count", fs.BF.Count())
 
 			if peerConnection.transfer.Size >= proto.PIECE_SIZE_UINT64 {
 				peerConnection.SendPacket(s, proto.OP_EDONKEYPROT, proto.OP_HASHSETREQUEST, &peerConnection.transfer.Hash)
@@ -202,9 +197,7 @@ M:
 			}
 		case ph.Packet == proto.OP_FILEREQANSNOFIL:
 			// no file status received
-			// inform transfer/session here
 			lastError = fmt.Errorf("no file answer received")
-			break
 		case ph.Packet == proto.OP_HASHSETREQUEST:
 			// hash set request received
 		case ph.Packet == proto.OP_HASHSETANSWER:
@@ -228,12 +221,9 @@ M:
 			peerConnection.transfer.peerConnChan <- peerConnection
 			// got accept upload
 		case ph.Packet == proto.OP_QUEUERANKING:
-			rank := sb.ReadUint16()
-			log.Println("queue ranked", rank)
-			// got queue ranking
+			lastError = fmt.Errorf("queue ranked: %d", sb.ReadUint16())
 		case ph.Packet == proto.OP_OUTOFPARTREQS:
-			// got out of parts
-			log.Println("out of parts received")
+			lastError = fmt.Errorf("out of parts")
 		case ph.Packet == proto.OP_REQUESTPARTS:
 			// got 32 request parts request
 		case ph.Packet == proto.OP_REQUESTPARTS_I64:
@@ -250,15 +240,16 @@ M:
 
 			block := proto.FromOffset(sp.Begin)
 
+			reqBlockIndex := -1
 			for i, x := range peerConnection.requestedBlocks {
 				if x.block == block {
+					reqBlockIndex = i
 					if x.data != nil {
 						recvBytes, err := x.Receive(peerConnection.connection, sp.Begin, sp.End)
 						if err != nil {
 							log.Printf("Peer connection error on receive data: %v\n", err)
 							lastError = err
-							break M
-							// raise error and close peerConnection
+							break
 						} else {
 							peerConnection.recvStat(s, recvBytes)
 						}
@@ -266,19 +257,19 @@ M:
 						if x.region.IsEmpty() {
 							peerConnection.transfer.dataChan <- x
 							peerConnection.requestedBlocks = RemovePendingBlock(peerConnection.requestedBlocks, i)
+							if len(peerConnection.requestedBlocks) == 0 {
+								// all blocks completed
+								peerConnection.transfer.peerConnChan <- peerConnection
+							}
 						}
 					}
 					break
 				}
 			}
 
-			log.Println("Requested block size", len(peerConnection.requestedBlocks))
-
-			// all blocks completed
-			if len(peerConnection.requestedBlocks) == 0 {
-				peerConnection.transfer.peerConnChan <- peerConnection
+			if reqBlockIndex == -1 {
+				lastError = fmt.Errorf("incoming block %s has not corresponding index", block.ToString())
 			}
-
 			// got 32 sending part response
 			// got 64 sending part response
 		case ph.Packet == proto.OP_COMPRESSEDPART || ph.Packet == proto.OP_COMPRESSEDPART_I64:
@@ -294,17 +285,17 @@ M:
 			fmt.Printf("Recv compressed part, offset: %d, compressed data length %d\n", cp.Offset, cp.CompressedDataLength)
 
 			block := proto.FromOffset(cp.Offset)
+			reqBlockIndex := -1
 			for i, x := range peerConnection.requestedBlocks {
 				if x.block == block {
+					reqBlockIndex = i
 					compressedData := make([]byte, cp.CompressedDataLength)
 					recvBytes, err := io.ReadFull(peerConnection.connection, compressedData)
 					log.Printf("compressed recv bytes %d\n", recvBytes)
 
 					if err != nil {
-						fmt.Printf("error on read compressed part %v\n", err)
-						// close peerConnection and exit
 						lastError = err
-						break M
+						break
 					} else {
 						peerConnection.recvStat(s, recvBytes)
 					}
@@ -312,9 +303,8 @@ M:
 					b := bytes.NewReader(compressedData)
 					z, err := zlib.NewReader(b)
 					if err != nil {
-						fmt.Printf("Error on un-compression %v\n", err)
 						lastError = err
-						break M
+						break
 					}
 
 					defer z.Close()
@@ -323,8 +313,7 @@ M:
 					recvBytes, err = x.ReceiveToEof(z, cp.Offset)
 					if err != nil {
 						lastError = err
-						fmt.Printf("Error on read un-compression %v\n", err)
-						break M
+						break
 					} else {
 						log.Printf("receive %d uncompressed bytes\n", recvBytes)
 						// already taken in account above
@@ -333,20 +322,29 @@ M:
 					if x.region.IsEmpty() {
 						peerConnection.transfer.dataChan <- x
 						peerConnection.requestedBlocks = RemovePendingBlock(peerConnection.requestedBlocks, i)
+						if len(peerConnection.requestedBlocks) == 0 {
+							peerConnection.transfer.peerConnChan <- peerConnection
+						}
 					}
-
 					break
 				}
 			}
 
-			if len(peerConnection.requestedBlocks) == 0 {
-				peerConnection.transfer.peerConnChan <- peerConnection
+			if reqBlockIndex == -1 {
+				lastError = fmt.Errorf("incoming block %s has not corresponding index", block.ToString())
 			}
-
+		case ph.Packet == proto.OP_CANCELTRANSFER:
+			lastError = fmt.Errorf("cancel transfer")
 		case ph.Packet == proto.OP_END_OF_DOWNLOAD:
 			// got end of download response
+			lastError = fmt.Errorf("end of download")
 		default:
 			log.Printf("Receive unknown protocol:%x packet: %x packetBytes: %d\n", ph.Protocol, ph.Packet, ph.Bytes)
+		}
+
+		if lastError != nil {
+			log.Printf("stop peer connection by error %v\n", lastError)
+			break
 		}
 	}
 
@@ -355,10 +353,10 @@ M:
 
 func (connection *PeerConnection) SendPacket(s *Session, protocol byte, packet byte, data proto.Serializable) {
 	if data == nil {
-		bytes := make([]byte, proto.HEADER_SIZE)
+		b := make([]byte, proto.HEADER_SIZE)
 		ph := proto.PacketHeader{Protocol: protocol, Packet: packet, Bytes: 1}
-		ph.Write(bytes)
-		n, err := connection.connection.Write(bytes[:proto.HEADER_SIZE])
+		ph.Write(b)
+		n, err := connection.connection.Write(b[:proto.HEADER_SIZE])
 		if err != nil {
 			connection.Close(false)
 		} else {
@@ -368,8 +366,8 @@ func (connection *PeerConnection) SendPacket(s *Session, protocol byte, packet b
 
 	sz := proto.DataSize(data)
 	log.Printf("Packet size calculated: %d\n", sz)
-	bytes := make([]byte, sz+proto.HEADER_SIZE)
-	stateBuffer := proto.StateBuffer{Data: bytes[proto.HEADER_SIZE:]}
+	b := make([]byte, sz+proto.HEADER_SIZE)
+	stateBuffer := proto.StateBuffer{Data: b[proto.HEADER_SIZE:]}
 	data.Put(&stateBuffer)
 
 	if stateBuffer.Error() != nil {
@@ -381,19 +379,15 @@ func (connection *PeerConnection) SendPacket(s *Session, protocol byte, packet b
 
 	bytesCount := uint32(stateBuffer.Offset() + 1)
 	ph := proto.PacketHeader{Protocol: protocol, Packet: packet, Bytes: bytesCount}
-	ph.Write(bytes)
-	log.Printf("Bytes: %x\n", bytes)
-	n, err := connection.connection.Write(bytes[:stateBuffer.Offset()+proto.HEADER_SIZE])
+	ph.Write(b)
+	log.Printf("Bytes: %x\n", b)
+	n, err := connection.connection.Write(b[:stateBuffer.Offset()+proto.HEADER_SIZE])
 	if err != nil {
 		log.Printf("peer connection can not write packet %v\n", err)
 		connection.Close(false)
 	} else {
 		connection.sendStat(s, n)
 	}
-}
-
-func (conneection *PeerConnection) receiveCompressedData(offset uint64, compressedLength uint64, payloadSize int) {
-
 }
 
 func (peerConnection *PeerConnection) Close(byRequest bool) {
@@ -411,17 +405,6 @@ func (peerConnection *PeerConnection) Close(byRequest bool) {
 		fmt.Println("no connection - set disconnect later")
 		peerConnection.DisconnectLater = true
 	}
-}
-
-func (connection *PeerConnection) receiveData(begin uint64, end uint64, compressed bool) {
-	//connection.recvPieceIndex, connection.recvStart, connection.recvLength = data.BeginEnd2StartLength(begin, end)
-	//connection.recvPos = 0
-	//blockIndex := int(connection.recvStart / uint64(data.BLOCK_SIZE))
-	//block := connection.getDownloadingBlock(connection.recvPieceIndex, blockIndex)
-	//if block != nil {
-	//inBlockOffset := connection.recvStart % uint64(data.BLOCK_SIZE)
-	// generate slice here
-	//}
 }
 
 func (peerConnection *PeerConnection) recvStat(s *Session, n int) {

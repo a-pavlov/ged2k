@@ -443,15 +443,6 @@ func EndpointFromString(s string) Endpoint {
 	return p
 }
 
-func GetContainer(data []Serializable, sb *StateBuffer) {
-	for _, x := range data {
-		x.Get(sb)
-		if sb.err != nil {
-			break
-		}
-	}
-}
-
 type Collection []Serializable
 type TagCollection []Tag
 
@@ -661,7 +652,6 @@ func (pc *PacketCombiner) Read(reader io.Reader) (PacketHeader, []byte, error) {
 
 	if ph.Protocol == OP_PACKEDPROT {
 		b := bytes.NewReader(pc.data[:bytesToRead])
-		///err := os.WriteFile("/tmp/dat1", pc.data[:bytesToRead], 0644)
 		z, err := zlib.NewReader(b)
 		if err != nil {
 			return ph, pc.data[:6], err
